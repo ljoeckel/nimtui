@@ -7,6 +7,6 @@ srcDir = "."
 requires "nim >= 2.2.4"
 
 task globaleditor, "Run GlobalEditor example":
-    exec "nim c -r ./nimtui/examples/global_editor.nim"
+    exec "nim c -r ./nimtui/examples/globaleditor.nim"
 task formeditor, "Run FormEditor example":
     exec "nim c -r ./nimtui/examples/formeditor.nim"

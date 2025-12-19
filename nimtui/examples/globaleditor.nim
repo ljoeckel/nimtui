@@ -92,7 +92,8 @@ if isMainModule:
     let height = getTerminalHeight()
     let yoff = 6
     form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height)
-    grid = Grid(id:"grid", layout:Layout.H2_25, y:0, width:width, height:height, frame:1)
+    form.add(Label(id:"lbl1", name:"This is a Label", align:TOP_RIGHT, textstyle:ALARM))
+    grid = Grid(id:"grid", layout:Layout.H2_25, y:1, width:width, height:height, frame:1)
     grid.add(ListBox(focus:true, id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1, x:0, y:0, width:25, height:height-yoff))
     grid.add(ListBox(id:"global", name:"Global", provider:globalProvider, frame:1, x:26, y:0, width:width-30, height:height-yoff))
     form.add(grid)
@@ -131,15 +132,20 @@ if isMainModule:
             var statsdlg: View
             if findView("statsdlg").isNil:
                 statsdlg = View(frame:1, id:"stats", modal:true, name:"Statistics", x:20, y:3, height:11, width:40)
-                statsdlg.add(TextField(id:"global", editable:false, x:1, y:0,    name:"Global      : ", fieldlen:20))
-                statsdlg.add(TextField(id:"records", editable:false, x:1, y:1,   name:"Recods      : ", fieldlen:12))
-                statsdlg.add(TextField(id:"keybytes", editable:false, x:1, y:2,  name:"Key bytes   : ", fieldlen:12))
-                statsdlg.add(TextField(id:"keymax", editable:false, x:1, y:3,    name:"Max Keylen  : ", fieldlen:12))                
-                statsdlg.add(TextField(id:"databytes", editable:false, x:1, y:4, name:"Data bytes  : ", fieldlen:12))
-                statsdlg.add(TextField(id:"datamax", editable:false, x:1, y:5,   name:"Max Datalen : ", fieldlen:12))
-                statsdlg.add(TextField(id:"processed", editable:false, x:1, y:6, name:"Duration    : ", fieldlen:8))
+                statsdlg.add(TextField(id:"global", editable:false, x:1, y:0,    name:"Global      : ", len:20))
+                statsdlg.add(TextField(id:"records", editable:false, x:1, y:1,   name:"Recods      : ", len:12))
+                statsdlg.add(TextField(id:"keybytes", editable:false, x:1, y:2,  name:"Key bytes   : ", len:12))
+                statsdlg.add(TextField(id:"keymax", editable:false, x:1, y:3,    name:"Max Keylen  : ", len:12))                
+                statsdlg.add(TextField(id:"databytes", editable:false, x:1, y:4, name:"Data bytes  : ", len:12))
+                statsdlg.add(TextField(id:"datamax", editable:false, x:1, y:5,   name:"Max Datalen : ", len:12))
+                statsdlg.add(TextField(id:"processed", editable:false, x:1, y:6, name:"Duration    : ", len:8))
 
-                statsdlg.add(Button(id:"close", name:"Close", frame:1, action:closeView(statsdlg)))
+                statsdlg.add(Button(id:"close", name:"Close", frame:1, align:BOT_RIGHT, action:closeView(statsdlg)))
+                statsdlg.add(Button(id:"left", name:"LEFT", frame:1, align:BOT_LEFT, action:closeView(statsdlg)))
+                statsdlg.add(Button(id:"left2", name:"LEFT2", frame:1, align:BOT_LEFT, action:closeView(statsdlg)))                
+                statsdlg.add(Button(id:"close4", name:"NONE", frame:1, x:15, y:7, action:closeView(statsdlg)))
+                statsdlg.add(Label(id:"lbl5", name:"A LABEL", frame:0, x:25, y:6))
+                
                 addView(statsdlg)
                 setFocus(statsdlg, "close")
 
@@ -156,11 +162,11 @@ if isMainModule:
         result.onAction = proc(v: Widget) =
             onExit()
 
-    form.add(Button(frame:1, id:"reload", name:"Reload", action:reloadAction(form)))
-    form.add(Button(frame:1, id:"kill", name:"Kill", action:killAction(form)))    
-    form.add(Button(frame:1, id:"stats", name:"Stats", action:statsAction(form)))    
-    form.add(Button(frame:1, id:"quit", name:"Quit", action:quitAction(form)))    
+    form.add(Button(frame:1, id:"reload", name:"Reload", align:BOT_LEFT, action:reloadAction(form)))
+    form.add(Button(frame:1, id:"kill", name:"Kill", align:BOT_LEFT, action:killAction(form)))    
+    form.add(Button(frame:1, id:"stats", name:"Stats", align:BOT_LEFT, action:statsAction(form)))    
+    form.add(Button(frame:1, id:"quit", name:"Quit", align:BOT_RIGHT, action:quitAction(form)))    
 
     addView(form)
-    setFocus(form, "globals")
+    #setFocus(form, "globals")
     enterEditLoop()

@@ -2,8 +2,12 @@ import std/strutils
 import std/strformat
 import std/unicode
 import std/os
+import std/tables
 import macros
 import texalot
+
+when compileOption("profiler"):
+  import std/nimprof
 
 const
     ROUND_DOT = "\u02f3"
@@ -48,13 +52,13 @@ const
     FocusedBG* = rgb("#EEF5FF")
 
     MODAL* = TextStyle(fg: Gray, bg: Light_gray, style: STYLE_FAINT)
-    ALARM* = TextStyle(fg: Yellow, bg: Dark_blue, style: STYLE_BOLD)
+    ALARM* = TextStyle(fg: Red, bg: White, style: STYLE_NONE)
     DEFAULT* = TextStyle(fg: DefaultFG, bg: DefaultBG, style: STYLE_NONE)
     FRAME_FOCUS* = TextStyle(fg: Dark_green, bg: DefaultBG, style: STYLE_NONE)
     FRAME_FOCUS_MODAL* = TextStyle(fg: Dark_goldenrod, bg: DefaultBG, style: STYLE_NONE)    
     FAINT* = TextStyle(fg: DefaultFG, bg: DefaultBG, style: STYLE_FAINT)
     TEXT* = TextStyle(fg: DefaultFG, bg: DefaultBG, style: STYLE_NONE)
-    BTN_TEXT* = TextStyle(fg: Dark_blue, bg: DefaultBG, style: STYLE_NONE)
+    BTN_TEXT* = TextStyle(fg: Royal_blue, bg: DefaultBG, style: STYLE_BOLD)
     BTN_FOCUS* = TextStyle(fg: Whitesmoke , bg: Royal_blue, style: STYLE_BOLD)
     BTN_DISABLED* = TextStyle(fg: Gray , bg: DefaultBG, style: STYLE_NONE)
     TEXT_VALUE* = TextStyle(fg: Dark_blue, bg: DefaultBG, style: STYLE_BOLD)    
@@ -70,6 +74,15 @@ type
     Direction* = enum
         Forward
         Backward
+
+    Align* = enum 
+        NONE,
+        TOP_LEFT,
+        TOP_CENTER,
+        TOP_RIGHT,
+        BOT_LEFT,
+        BOT_CENTER,
+        BOT_RIGHT
 
     Layout* = enum 
         NONE = (-1, "-1"),
@@ -102,10 +115,11 @@ type
 
     Widget* = ref object of RootObj
         parent* {.cursor.}: Widget
-        x*: int
-        y*: int
+        x*: int = 0
+        y*: int = 0
         width*: int
         height*: int
+        align*: Align = Align.NONE
         editX*: int
         editY*: int
         frame*: int = 0
@@ -116,7 +130,6 @@ type
         enabled*: bool = true
         editable*: bool = true
         focus*: bool
-        #cursorOn*: bool
         modal*: bool
         selected*: bool
         dragging*: bool
@@ -136,7 +149,6 @@ type
         ch*: string = " "
         textStyle*: TextStyle = DEFAULT
         layout*: Layout = NONE
-        recalculated*: bool
         
     View* = ref object of Widget
     Grid* = ref object of Widget
@@ -149,9 +161,11 @@ type
         RegEx 
 
     TextField* = ref object of Widget
-        fieldlen*: int
+        len*: int
         fieldtyp*: int
         value*: string
+
+    Label* = ref object of Widget
 
     Button* = ref object of Widget
 
@@ -256,17 +270,22 @@ proc pageDown*(lb: var ListBox) =
         lb.mouseY = lb.lines.len - 1
 
 
-func offset*(v: Widget, x: int, y: int): (int, int) =
+# func offset*(v: Widget, x: int, y: int): (int, int) =
+#     result = (v.x + x + v.frame, v.y + y + v.frame)
+func offset(v: Widget, w: Widget): (int, int) =
+    result = (v.x + w.x + v.frame, v.y + w.y + v.frame)
+func offset(w: Widget): (int, int) =
+    offset(w.parent, w)
+func offset(v: Widget, x: int, y: int): (int, int) =
     result = (v.x + x + v.frame, v.y + y + v.frame)
 
-
-func mouseToOffset*(v: Widget, mx, my: int): (int, int) =
+proc mouseToOffset*(v: Widget, x,y: int): (int, int) =
     let refw = if v of ListBox and v.parent of Grid: v.parent else: v
-    result = (mx - refw.x - refw.frame, my - refw.y - v.frame)
-
+    result = (x - refw.x - refw.frame, y - refw.y - v.frame)
 
 func mouseToOffset*(v: Widget, me: MouseEvent): (int, int) =
-    mouseToOffset(v, me.x, me.y)
+    let refw = if v of ListBox and v.parent of Grid: v.parent else: v
+    result = (me.x - refw.x - refw.frame, me.y - refw.y - v.frame)
 
 
 func allowDrop*(t: TextField): bool =
@@ -275,7 +294,7 @@ func allowDrop*(t: TextField): bool =
         let validY = if t.y >= child.y and t.y <= child.y: true else: false
         if child of TextField:
             let tf = TextField(child)
-            let fulllength = child.name.len + tf.fieldlen
+            let fulllength = child.name.len + tf.len
             if t.x >= child.x and t.x <= child.x + fulllength and validY:
                 return false
             if child.x >= t.x and child.x <= t.x + fulllength and validY:
@@ -329,45 +348,89 @@ proc selectButton*(w: Widget) =
     if w of Button:
         w.selected = true
 
+proc calculateXY(w: Widget) =
+    var x,y: int
+    let parent = w.parent
+    case w.align
+    of NONE: # x,y used
+        discard
+    of TOP_RIGHT:
+        w.x = parent.x + parent.width - parent.frame*2 - w.name.len - w.frame*2
+        w.y = parent.y
+    of TOP_LEFT:
+        discard 
+    of TOP_CENTER:
+        discard      
+    of BOT_RIGHT:  
+        w.x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
+        w.y = parent.y + parent.height - parent.frame - w.frame*2
+    of BOT_LEFT:
+        var maxx: int
+        for c in parent.childs:
+            if c.align == BOT_LEFT:
+                maxx = c.x - parent.x + c.name.len + c.frame
+        w.x = maxx + parent.x + parent.frame
+        w.y = parent.y + parent.height - parent.frame - w.frame*2
+    of BOT_CENTER: 
+        w.x = ((w.x + w.width) div 2) + w.x + w.frame
+        w.y = parent.y + parent.height - parent.frame - w.frame*2
 
 proc add*(parent: Widget, w: Widget) =
-    if w != nil and w.id.isEmptyOrWhitespace:
-        raise newException(ValueError, "Must have a id")
+    if w != nil and w.id.isEmptyOrWhitespace: raise newException(ValueError, "Must have a id")
     if w of Grid and (w.width == 0 or w.height == 0):
         raise newException(ValueError, "Must have width & height")
     for child in parent.childs:
-        if child.id == w.id: raise newException(ValueError, "Widget with id '" & child.id & "' already there")
+        # check for duplicate id
+        if child.id == w.id: raise newException(ValueError, "Duplicate id '" & child.id & "'")
 
-    if w of Button:
-        # calculate position when x,y not set
-        var maxx = 0
-        if w.x == 0 and w.y == 0:
-            for c in parent.childs:
-                if c of Button:
-                    maxx = c.x + c.name.len + c.frame + 1
-            w.x = maxx
-            w.y = parent.height - parent.frame - 1 - w.frame*2
-            w.recalculated = true
+    # check button for x,y / alignment
+    if w of Button and w.x == 0 and w.y == 0 and w.align == Align.NONE:
+        w.align = Align.BOT_LEFT
 
-    var maxElements: int
-    let percent = parseInt($parent.layout)
-    case parent.layout
-    of NONE:
-        maxElements = int.high
-    of H2_10, H2_20, H2_25, H2_30, H2_40, H2_50, H2_75:
-        maxElements = 2
-    of H3_33, H3_66:
-        maxElements = 3
-    of H4_25:
-        maxElements = 4
-    of H5_20:
-        maxElements = 5
+    w.parent = parent
+    calculateXY(w)
+    parent.childs.add(w)
 
-    if parent.childs.len < maxElements:
-        parent.childs.add(w)
-        w.parent = parent
-    else:
-        raise newException(ValueError, "Maximum number of children reached. Use another layout")
+
+
+# proc add*(parent: Widget, w: Widget) =
+#     if w != nil and w.id.isEmptyOrWhitespace:
+#         raise newException(ValueError, "Must have a id")
+#     if w of Grid and (w.width == 0 or w.height == 0):
+#         raise newException(ValueError, "Must have width & height")
+#     for child in parent.childs:
+#         if child.id == w.id: raise newException(ValueError, "Widget with id '" & child.id & "' already there")
+
+#     if w of Button:
+#         # calculate position when x,y not set
+#         var maxx = 0
+#         if w.x == 0 and w.y == 0:
+#             for c in parent.childs:
+#                 if c of Button:
+#                     maxx = c.x + c.name.len + c.frame + 1
+#             w.x = maxx
+#             w.y = parent.height - parent.frame - 1 - w.frame*2
+#             w.recalculated = true
+
+#     var maxElements: int
+#     let percent = parseInt($parent.layout)
+#     case parent.layout
+#     of NONE:
+#         maxElements = int.high
+#     of H2_10, H2_20, H2_25, H2_30, H2_40, H2_50, H2_75:
+#         maxElements = 2
+#     of H3_33, H3_66:
+#         maxElements = 3
+#     of H4_25:
+#         maxElements = 4
+#     of H5_20:
+#         maxElements = 5
+
+#     if parent.childs.len < maxElements:
+#         parent.childs.add(w)
+#         w.parent = parent
+#     else:
+#         raise newException(ValueError, "Maximum number of children reached. Use another layout")
 
 proc getFocus*(): Widget =
     for v in views:
@@ -408,32 +471,44 @@ proc findChild*(v: Widget, x, y: int): Widget =
     for child in collected:
         let refw = if child.parent of Grid: child.parent else: child
         let framey = if child.frame > 0: child.frame + 1 else: 0
+        var ox,oy: int
+        if child.align == NONE:
+            (ox, oy) = mouseToOffset(v, x, y)
+        else:
+            ox = child.x
+            oy = child.y
+
         if child of TextField:
             let tf = TextField(child)
-            if x >= child.x and x <= child.x + child.name.len + tf.fieldlen:
-                if y >= child.y and y <= child.y: 
+            if ox >= child.x and ox <= child.x + child.name.len + tf.len:
+                if oy >= child.y and oy <= child.y: 
                     result = child
         elif child of Button:
-            if x >= child.x and x <= child.x + child.name.len + child.frame:
-                if y >= child.y and y <= child.y + framey: 
-                    result = child
+            if child.align == NONE:
+                let (ox, oy) = mouseToOffset(v, x, y)
+                if ox >= child.x and ox <= child.x + child.name.len + child.frame:
+                    if oy >= child.y and oy <= child.y + framey: 
+                        result = child
+            else:
+                if x >= child.x and x <= child.x + child.name.len + child.frame:
+                    if y >= child.y and y <= child.y + framey: 
+                        result = child
         elif child of ListBox:
-            if x >= child.x and x <= child.x + child.width:
-                if y >= refw.y and y <= refw.y + child.height:
+            if ox >= child.x and ox <= child.x + child.width:
+                if oy >= refw.y and oy <= refw.y + child.height:
                     result = child
         elif child of Grid:
-            if x >= child.x and x <= child.x + child.width:
-                if y >= child.y and y <= child.y + child.height: 
+            if ox >= child.x and ox <= child.x + child.width:
+                if oy >= child.y and oy <= child.y + child.height: 
                     result = findChild(child, x, y) # search in the grid
         else:
-            if x >= child.x and x <= child.x + child.name.len:
-                if y >= child.y and y <= child.y: result = child
+            if ox >= child.x and ox <= child.x + child.name.len:
+                if oy >= child.y and oy <= child.y: result = child
 
 
 proc findChild*(v: Widget, e: MouseEvent): Widget =
-    if v.isNil: log("490 nil")
-    let (x,y) = mouseToOffset(v, e)
-    findChild(v, x, y)
+    #let (x,y) = mouseToOffset(v, e)
+    findChild(v, e.x, e.y)
 
 
 proc updateField(v: Widget) =
@@ -490,17 +565,21 @@ proc toLastEditField*(v: Widget) =
 
 
 proc setValue*(v: Widget, id: string, value: string) =
+    if v.isNil: raise newException(ValueError, "First parameter is nil")
+
     var (collected, _) = collectChilds(v)        
     for child in collected:
         if child.id == id:
             if child of TextField:
                 TextField(child).value = value
                 return
-            if child of ListBox:
+            elif child of ListBox:
                 var lb = ListBox(child)
                 lb.provider.selected = value
                 lb.pageHome()
                 return
+            elif child of Label:
+                Label(child).name = value
 
     echo "No child with id ", id, " found!"
 
@@ -595,19 +674,19 @@ proc processTextField*(v: var Widget, t: var TextField) =
                     nr.add(runes[v.editX+1..^1])
                     t.value = $nr
         of EVENT_KEY_ARROW_RIGHT:
-            if v.editX < runes.len and v.editX < t.fieldlen-1: inc v.editX
+            if v.editX < runes.len and v.editX < t.len-1: inc v.editX
         of EVENT_KEY_ARROW_LEFT:
             if v.editX > 0: dec v.editX
         of EVENT_KEY_END:
             v.editX = runes.len
-            if v.editX > t.fieldlen-1: v.editX = t.fieldlen-1
+            if v.editX > t.len-1: v.editX = t.len-1
         of EVENT_KEY_HOME:
             v.editX = 0
         of EVENT_KEY_INSERT:
             v.insert = not v.insert
         else:
             if v.insert:
-                if runes.len == t.fieldlen:
+                if runes.len == t.len:
                     nr.add(runes[0..v.editX-1])
                     nr.add(ke.str.toRunes())
                     t.value = $nr
@@ -620,7 +699,7 @@ proc processTextField*(v: var Widget, t: var TextField) =
                         t.value = $nr
                         inc v.editX
                     else:
-                        if v.editX < t.fieldlen:
+                        if v.editX < t.len:
                             nr.add(runes[0..v.editX-1])
                             nr.add(ke.str.toRunes())
                             nr.add(runes[v.editX..^1])
@@ -629,12 +708,12 @@ proc processTextField*(v: var Widget, t: var TextField) =
                 else:
                     nr.add(runes)
                     nr.add(ke.str.toRunes())
-                    if nr.len <= t.fieldlen:
+                    if nr.len <= t.len:
                         t.value = $nr
                         inc v.editX
-                v.editX = min(v.editX, t.fieldlen - 1)
+                v.editX = min(v.editX, t.len - 1)
             else: # not f.insert
-                if v.editX <= t.fieldlen - 1:
+                if v.editX <= t.len - 1:
                     nr.add(runes[0..v.editX-1])
                     nr.add(ke.str.toRunes())
                     if v.editX < t.value.toRunes().len:
@@ -725,7 +804,7 @@ proc updateFocus*() =
             if child == nil: return
             if child of TextField and not child.editable: return
             selectChild(child)
-            
+
             if child of TextField:
                 let tf = TextField(child)
                 if not tf.editable: return
@@ -773,14 +852,16 @@ proc removeView*(id: string) =
 
 proc processBaseEvents*(v: var Widget) =
     if texalotEvent of ResizeEvent:
+        log("resize v.id" & v.id)
         v.height = getTerminalHeight()
         v.width = getTerminalWidth()
-        # recalculate y position of buttons
+        # recalculate xy position
         let (collected, _) = collectChilds(v)
         for child in collected:
-            if child of Button:
-                if child.recalculated:
-                    child.y = child.parent.y + child.parent.height - child.parent.frame - 1 - child.frame*2
+            if child.align != NONE:
+                child.x = 0
+                child.y = 0
+            calculateXY(child)
     elif texalotEvent of MouseEvent:
         let ev = MouseEvent(texalotEvent)
         var child = findChild(v, ev)
@@ -845,13 +926,13 @@ proc drawFrame*(v: Widget, bxch: array[6, string]) =
 
     let x2 = v.x + v.width
     let y2 = v.y + v.height
-    var (bg, fg, style) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
+    var (bg, fg, charstyle) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
     if modal and not v.modal:
         bg = MODAL.bg
         fg = MODAL.fg
-        style = MODAL.style
+        charstyle = MODAL.style
 
-    drawRectangle(v.x, v.y, x2, y2, bg, fg, v.ch, style) 
+    drawRectangle(v.x, v.y, x2, y2, bg, fg, v.ch, charstyle) 
     let width = x2 - v.x - 2
     
     # draw focus frame around
@@ -860,15 +941,15 @@ proc drawFrame*(v: Widget, bxch: array[6, string]) =
     if v.frame > 0:
         if v.name.len > 0:
             let rept = max(0, width - v.name.len - 2)
-            drawText(bxch[0] & " ", v.x, v.y, bg, fg, style)
+            drawText(bxch[0] & " ", v.x, v.y, bg, fg, charstyle)
             drawText(v.name & " ", v.x+2, v.y, TEXT)
-            drawText(repeat(bxch[2], rept) & bxch[1], v.x+3+v.name.len, v.y, bg, fg, style)
+            drawText(repeat(bxch[2], rept) & bxch[1], v.x+3+v.name.len, v.y, bg, fg, charstyle)
         else:
-            drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], v.x, v.y, bg, fg, style)
-        drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], v.x, v.y + v.height - 1, bg, fg, style)
+            drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], v.x, v.y, bg, fg, charstyle)
+        drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], v.x, v.y + v.height - 1, bg, fg, charstyle)
         for y in v.y + 1..v.y + v.height - v.frame - 1:
-            drawText(bxch[3], v.x, y, bg, fg, style)
-            drawText(bxch[3], x2-1, y, bg, fg, style)
+            drawText(bxch[3], v.x, y, bg, fg, charstyle)
+            drawText(bxch[3], x2-1, y, bg, fg, charstyle)
 
 
 proc drawOuterFrame*(v: var Widget) =
@@ -879,15 +960,15 @@ proc editTextField*(v: Widget) =
     # Is a textfield selected?
     if v.focus and v.editChild != nil and v.editChild of TextField and v.editChild.selected:
         let txt = TextField(v.editChild)
-        let (x,y) = offset(v, txt.x, txt.y)
-
+        #let (x,y) = offset(v, txt.x, txt.y)
+        let (x,y) = offset(v, txt)
         # display field for editing
         var cursorStyle = if v.insert: FIELD_FOCUS_INSERT else: FIELD_FOCUS
         if not txt.editable: cursorStyle = DEFAULT
         if modal and txt.parent.modal == false: cursorStyle = MODAL
      
         drawText(txt.value, x + txt.name.len, y, cursorStyle)
-        let rpt = txt.fieldlen - txt.value.toRunes().len
+        let rpt = txt.len - txt.value.toRunes().len
         if rpt > 0: drawText(repeat(FILLER, rpt), cursorStyle)
 
         # Draw cursor reverse
@@ -897,15 +978,24 @@ proc editTextField*(v: Widget) =
         drawChar(charAtX, cursorStyle)
 
 
+proc drawLabel(t: Label, style: TextStyle) =
+    #let (x,y) = offset(t.parent, t.x, t.y)
+    let (x,y) = offset(t.parent, t)
+    var stl = if t.textstyle != DEFAULT: t.textstyle else: style
+    if modal and t.parent.modal == false: stl = MODAL
+    drawText(t.name, x, y, stl)
+
+
 proc drawTextField(t: TextField, style: TextStyle) =
-    let (x,y) = offset(t.parent, t.x, t.y)
+    #let (x,y) = offset(t.parent, t.x, t.y)
+    let (x,y) = offset(t.parent, t)
     var stl = if t.textstyle != DEFAULT: t.textstyle else: style
     if modal and t.parent.modal == false: stl = MODAL
     drawText(t.name, x, y, stl)
     stl = FAINT
     if modal and t.parent.modal == false: stl = MODAL
     if t.editable:
-        drawText(repeat(FILLER, t.fieldlen), x + t.name.toRunes().len, y, stl)
+        drawText(repeat(FILLER, t.len), x + t.name.toRunes().len, y, stl)
     stl = TEXT_VALUE
     if modal and t.parent.modal == false: stl = MODAL
     drawText(t.value, x + t.name.len, y, stl)
@@ -914,7 +1004,12 @@ proc drawTextField(t: TextField, style: TextStyle) =
 
 proc drawButton*(btn: Button) =
     let bxch = BTN_BOX_CHARS_FRAME
-    let (x, y) = offset(btn.parent, btn.x, btn.y)
+    var x,y: int
+    if btn.align == NONE:
+        (x,y) = offset(btn)
+    else:
+        (x,y) = (btn.x, btn.y)
+    #let (x, y) = (btn.x, btn.y)
     let x2 = x + btn.name.len
     let width = btn.name.len
 
@@ -925,11 +1020,10 @@ proc drawButton*(btn: Button) =
 
     if btn.frame > 0:
         # Draw box around
-        drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], x, y, style)
-        drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], x, y+2, style)
-        for y in y + 1..y+1 :
-            drawText(bxch[3], x, y, style)
-            drawText(bxch[3], x2+1, y, style)
+        drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], x, y, FAINT)
+        drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], x, y+2, FAINT)
+        drawText(bxch[3], x, y+1, FAINT)
+        drawText(bxch[3], x2+1, y+1, FAINT)
 
     # Draw Text
     let styleTxt = if enabled and btn.selected: BTN_FOCUS else: style
@@ -939,7 +1033,8 @@ proc drawButton*(btn: Button) =
 proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
     let stl = if lb.textstyle != DEFAULT: lb.textstyle else: style
     let bxch = BTN_BOX_CHARS_FRAME
-    let (x, y) = offset(lb.parent, lb.x, lb.y)
+    let (x, y) = offset(lb.parent, lb)
+    #let (x, y) = offset(lb.parent, lb.x, lb.y)
     let x2 = x + lb.width
     let y2 = y + lb.height + lb.frame
     var style = if not lb.enabled: FAINT else: style
@@ -948,11 +1043,11 @@ proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
 
     if lb.frame > 0:
         # Draw box around
-        drawText(bxch[0] & repeat(bxch[2], lb.width) & bxch[1], x, y, style)
-        drawText(bxch[4] & repeat(bxch[2], lb.width) & bxch[5], x, y2, style)
+        drawText(bxch[0] & repeat(bxch[2], lb.width) & bxch[1], x, y, FAINT)
+        drawText(bxch[4] & repeat(bxch[2], lb.width) & bxch[5], x, y2, FAINT)
         for y in y + 1..y2-1:
-            drawText(bxch[3], x, y, style)
-            drawText(bxch[3], x2+1, y, style)
+            drawText(bxch[3], x, y, FAINT)
+            drawText(bxch[3], x2+1, y, FAINT)
 
     # We must have a DataProvider, ask and paint
     (lb.lines, lb.more) = lb.provider.callback(lb.provider, lb.page, lb.height)
@@ -986,6 +1081,7 @@ proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
         drawText("\u2193", x + lb.width, y2, style)
 
 proc drawGrid(g: Grid) =
+    let parent = g.parent
     for child in g.childs:
         if child of TextField:
             drawTextField(TextField(child), g.textstyle)
@@ -994,6 +1090,8 @@ proc drawGrid(g: Grid) =
         elif child of ListBox:
             var lb = ListBox(child)
             drawListBox(lb, g.textstyle)
+        elif child of Label:
+            drawLabel(Label(child), g.textstyle)
         else: discard
 
 
@@ -1018,6 +1116,8 @@ proc drawChilds(v: var Widget) =
 
         if child of TextField:
             drawTextField(TextField(child), style)
+        elif child of Label:
+            drawLabel(Label(child), style)
         elif child of Button:
             drawButton(Button(child))
         elif child of ListBox:
@@ -1071,7 +1171,7 @@ proc enterEditLoop*() =
             if cursorOn != event.cursorOn:
                 cursorOn = event.cursorOn
             else:
-                os.sleep(1)
+                os.sleep(2)
                 continue
 
         # select view and handle events

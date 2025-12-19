@@ -76,7 +76,7 @@ proc onFocusForm(v: Widget) =
                     inc dropCount   
                     let name = "DataField" & $dropCount & ": "
                     let (x,y) = mouseToOffset(v, v.mouseX, v.mouseY)
-                    var child = TextField(id:name, x:x, y:y, name:name, fieldlen:20, value:"")
+                    var child = TextField(id:name, x:x, y:y, name:name, len:20, value:"")
                     v.add(child)
                 else:
                     v.dragChild = findChild(v, ev)
@@ -98,7 +98,7 @@ proc updateField(v: Widget) =
         let tn = TextField(v.dragChild)
         case t.id 
         of "NAME": tn.name = t.value
-        of "LEN": tn.fieldlen = try: parseInt(t.value) except: 0
+        of "LEN": tn.len = try: parseInt(t.value) except: 0
         of "TYP": tn.fieldtyp = try: parseInt(t.value) except: 0
 
 
@@ -109,7 +109,7 @@ proc onSelectionChanged(v: var View; value: Widget) =
     if value of TextField:
         let t = TextField(value)
         TextField(v.childs[0]).value = t.name
-        TextField(v.childs[1]).value = $t.fieldlen
+        TextField(v.childs[1]).value = $t.len
         TextField(v.childs[2]).value = $t.fieldtyp
 
 connectSelectionChanged(proc(value: Widget) =
@@ -149,7 +149,7 @@ if isMainModule:
     block:
         # The Form View
         form = View(id:"form", action:formActions(form), name:"FormEditor", frame:1, x:0, y:0, height:height, width:width-tw)
-        form.add(TextField(id:"selgbl", name:"Selected Global:", x:0, y:0, fieldlen:20))
+        form.add(TextField(id:"selgbl", name:"Selected Global:", x:0, y:0, len:20))
         var lb = ListBox(focus:true, id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1, x:0, y:1, width:20, height:12)
         form.add(lb)
         var lbglobal = ListBox(focus:false, id:"global", name:"Globals", provider:globalProvider, frame:1, x:21, y:1, width:80, height:12)
@@ -159,9 +159,9 @@ if isMainModule:
     block:
         # The Params View
         param = View(id:"params", action:paramActions(param), name:"Field Params", frame:1, x:width-tw, y:0, height:height, width:tw)
-        param.add(TextField(id:"NAME", x:0, y:0, name:"Fieldname: ", fieldlen:20))
-        param.add(TextField(id:"LEN", x:0, y:1, name:"      Len: ", fieldlen:3))
-        param.add(TextField(id:"TYP", x:0, y:2, name:"      Typ: ", fieldlen:1))
+        param.add(TextField(id:"NAME", x:0, y:0, name:"Fieldname: ", len:20))
+        param.add(TextField(id:"LEN", x:0, y:1, name:"      Len: ", len:3))
+        param.add(TextField(id:"TYP", x:0, y:2, name:"      Typ: ", len:1))
 
         var lb = ListBox(focus:false, id:"lb", name:"ListBox", provider:stringProvider, frame:1, x:0, y:6, width:20, height:5)
         param.add(lb)
@@ -212,9 +212,9 @@ if isMainModule:
         result.onAction = proc(v: Widget) =
             if findView("savedialog").isNil:
                 var savedlg = View(frame:1, id:"savedialog", modal:true, name:"Save Form", x:20, y:5, height:6, width:40)
-                savedlg.add(TextField(id:"id", x:0, y:0, name:"  Form-Id : ", fieldlen:20))
-                savedlg.add(TextField(id:"name", x:0, y:1, name:"     Name : ", fieldlen:20))
-                savedlg.add(TextField(id:"filename", x:0, y:2, name:" Filename : ", fieldlen:20))
+                savedlg.add(TextField(id:"id", x:0, y:0, name:"  Form-Id : ", len:20))
+                savedlg.add(TextField(id:"name", x:0, y:1, name:"     Name : ", len:20))
+                savedlg.add(TextField(id:"filename", x:0, y:2, name:" Filename : ", len:20))
                 savedlg.add(Button(id:"save", x:0, y:3, frame:1, name:"Save", action:serializeFormData(form)))
 
                 addView(savedlg)
