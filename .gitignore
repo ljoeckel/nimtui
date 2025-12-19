@@ -1,3 +1,4 @@
-nimcache/
+.nimcache/
 nimblecache/
 htmldocs/
+messages.log
