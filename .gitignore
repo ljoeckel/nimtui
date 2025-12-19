@@ -2,5 +2,5 @@
 nimblecache/
 htmldocs/
 messages.log
-examples/globaleditor
-examples/formeditor
+nimtui/examples/formeditor
+nimtui/examples/globaleditor

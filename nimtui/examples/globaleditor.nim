@@ -92,7 +92,8 @@ if isMainModule:
     let height = getTerminalHeight()
     let yoff = 6
     form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height)
-    form.add(Label(id:"lbl1", name:"This is a Label", align:TOP_RIGHT, textstyle:ALARM))
+    form.add(Label(id:"lbl1", name:"align.TOPRIGHT", align:TOP_RIGHT, textstyle:ALARM))
+    form.add(Label(id:"lbl2", name:"Free xy Label", x:30, y:0, textstyle:ALARM))    
     grid = Grid(id:"grid", layout:Layout.H2_25, y:1, width:width, height:height, frame:1)
     grid.add(ListBox(focus:true, id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1, x:0, y:0, width:25, height:height-yoff))
     grid.add(ListBox(id:"global", name:"Global", provider:globalProvider, frame:1, x:26, y:0, width:width-30, height:height-yoff))
@@ -128,10 +129,9 @@ if isMainModule:
                 setFocus(form, "globals")
 
         result.onAction = proc(v: Widget) =
-            let gbl = v.getValue("globals")
-            var statsdlg: View
+            var statsdlg: Dialog
             if findView("statsdlg").isNil:
-                statsdlg = View(frame:1, id:"stats", modal:true, name:"Statistics", x:20, y:3, height:11, width:40)
+                statsdlg = Dialog(frame:1, id:"stats", modal:true, name:"Statistics", x:20, y:3, height:11, width:40)
                 statsdlg.add(TextField(id:"global", editable:false, x:1, y:0,    name:"Global      : ", len:20))
                 statsdlg.add(TextField(id:"records", editable:false, x:1, y:1,   name:"Recods      : ", len:12))
                 statsdlg.add(TextField(id:"keybytes", editable:false, x:1, y:2,  name:"Key bytes   : ", len:12))
@@ -149,6 +149,7 @@ if isMainModule:
                 addView(statsdlg)
                 setFocus(statsdlg, "close")
 
+            let gbl = v.getValue("globals")
             setValue(statsdlg, "global", gbl)
             setValue(statsdlg, "records", $stats.records)
             setValue(statsdlg, "keybytes", $stats.keybytes)

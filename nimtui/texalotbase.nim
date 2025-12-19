@@ -151,6 +151,7 @@ type
         layout*: Layout = NONE
         
     View* = ref object of Widget
+    Dialog* = ref object of Widget
     Grid* = ref object of Widget
 
     DataType = enum 
@@ -213,6 +214,19 @@ macro defineSignal*(name: untyped; T: typed): untyped =
       for cb in `handlersName`:
         cb(value)
 
+proc addView*(v: Widget) =
+    if v.id.isEmptyOrWhitespace: raise newException(ValueError, "'id' must be set for View")
+    # View already there?
+    for view in views: 
+        if view.id == v.id: return 
+    views.add(v)
+
+
+proc findView*(id: string): Widget =
+    for v in views:
+        if id == v.id:
+            return v
+    nil 
 
 proc isModal*(): bool =
     for v in views:
@@ -367,7 +381,7 @@ proc calculateXY(w: Widget) =
     of BOT_LEFT:
         var maxx: int
         for c in parent.childs:
-            if c.align == BOT_LEFT:
+            if c.align == BOT_LEFT and c.x > 0:
                 maxx = c.x - parent.x + c.name.len + c.frame
         w.x = maxx + parent.x + parent.frame
         w.y = parent.y + parent.height - parent.frame - w.frame*2
@@ -829,7 +843,7 @@ proc setFocus*(view: Widget) =
                 v.focus = true
 
 
-proc setFocus*(view: View, id: string) =
+proc setFocus*(view: Widget, id: string) =
     setFocus(view)
     var found = false
     var (collected, _) = collectChilds(view)
@@ -852,16 +866,20 @@ proc removeView*(id: string) =
 
 proc processBaseEvents*(v: var Widget) =
     if texalotEvent of ResizeEvent:
-        log("resize v.id" & v.id)
-        v.height = getTerminalHeight()
-        v.width = getTerminalWidth()
-        # recalculate xy position
-        let (collected, _) = collectChilds(v)
-        for child in collected:
-            if child.align != NONE:
-                child.x = 0
-                child.y = 0
-            calculateXY(child)
+        # resize events only valid for View's (not subdialogs)
+        for view in views:
+            if not (view of View): return
+            view.height = getTerminalHeight()
+            view.width = getTerminalWidth()
+            let (collected, _) = collectChilds(view)
+            # reset all aligned widgets
+            for child in collected:
+                if child.align != NONE:
+                    child.x = 0
+                    child.y = 0
+            # recalculate xy for aligned widgets
+            for child in collected:
+                calculateXY(child)
     elif texalotEvent of MouseEvent:
         let ev = MouseEvent(texalotEvent)
         var child = findChild(v, ev)
@@ -1127,30 +1145,11 @@ proc drawChilds(v: var Widget) =
             drawGrid(Grid(child))
 
 
-proc addView*(v: Widget) =
-    if v.id.isEmptyOrWhitespace: raise newException(ValueError, "'id' must be set for View")
-    # View already there?
-    for view in views: 
-        if view.id == v.id: return 
-    views.add(v)
-
-
-proc findView*(id: string): Widget =
-    for v in views:
-        if id == v.id:
-            return v
-    nil 
-
-
-proc drawView(v: var Widget) =
-    if v.visible:
-        drawOuterFrame(v)
-        drawChilds(v)
-
-
 proc drawViews*() =
     for v in views.mitems:
-        v.drawView()
+        if v.visible:
+            drawOuterFrame(v)
+            drawChilds(v)
 
 
 proc enterEditLoop*() =
