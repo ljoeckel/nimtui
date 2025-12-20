@@ -91,9 +91,23 @@ if isMainModule:
     let width = getTerminalWidth()
     let height = getTerminalHeight()
     let yoff = 6
-    form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height)
-    form.add(Label(id:"lbl1", name:"align.TOPRIGHT", align:TOP_RIGHT, textstyle:ALARM))
-    form.add(Label(id:"lbl2", name:"Free xy Label", x:30, y:0, textstyle:ALARM))    
+    var cnt = 0
+
+    proc formAction(v: Widget): Action = 
+        result = Action(view:v)
+        result.onRepaint = proc(v: Widget) =
+            let tm = now()
+            setValue(v, "time", tm.format("HH:mm:ss"))
+        
+    form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height, action:formAction(form))
+    form.add(Label(id:"time", name:"00:00:00", align:TOP_RIGHT, textstyle:ALARM))
+    form.add(Label(id:"lbll1", name:"LEFT1", align:TOP_LEFT, textstyle:ALARM))
+    #form.add(Label(id:"lbl2", name:"Free xy Label", x:30, y:0, textstyle:ALARM))
+    form.add(Label(id:"lbll2", name:"LEFT2", align:TOP_LEFT, textstyle:ALARM))
+    form.add(Label(id:"cntr1", name:"12345678901234567890", align:TOP_CENTER, textstyle:ALARM))
+    form.add(Label(id:"cntr2", name:"ABCDEFG", align:TOP_CENTER, textstyle:ALARM))
+    form.add(Label(id:"cntr3", name:"abcdefg", align:BOT_CENTER, textstyle:ALARM))
+    #form.add(Label(id:"lbl3", name:"TOPRIGHT2", align:TOP_RIGHT, textstyle:ALARM))
     grid = Grid(id:"grid", layout:Layout.H2_25, y:1, width:width, height:height, frame:1)
     grid.add(ListBox(focus:true, id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1, x:0, y:0, width:25, height:height-yoff))
     grid.add(ListBox(id:"global", name:"Global", provider:globalProvider, frame:1, x:26, y:0, width:width-30, height:height-yoff))
@@ -142,7 +156,6 @@ if isMainModule:
 
                 statsdlg.add(Button(id:"close", name:"Close", frame:1, align:BOT_RIGHT, action:closeView(statsdlg)))
                 statsdlg.add(Button(id:"left", name:"LEFT", frame:1, align:BOT_LEFT, action:closeView(statsdlg)))
-                statsdlg.add(Button(id:"left2", name:"LEFT2", frame:1, align:BOT_LEFT, action:closeView(statsdlg)))                
                 statsdlg.add(Button(id:"close4", name:"NONE", frame:1, x:15, y:7, action:closeView(statsdlg)))
                 statsdlg.add(Label(id:"lbl5", name:"A LABEL", frame:0, x:25, y:6))
                 
@@ -163,10 +176,10 @@ if isMainModule:
         result.onAction = proc(v: Widget) =
             onExit()
 
-    form.add(Button(frame:1, id:"reload", name:"Reload", align:BOT_LEFT, action:reloadAction(form)))
     form.add(Button(frame:1, id:"kill", name:"Kill", align:BOT_LEFT, action:killAction(form)))    
     form.add(Button(frame:1, id:"stats", name:"Stats", align:BOT_LEFT, action:statsAction(form)))    
     form.add(Button(frame:1, id:"quit", name:"Quit", align:BOT_RIGHT, action:quitAction(form)))    
+    form.add(Button(frame:1, id:"reload", name:"Reload", align:BOT_RIGHT, action:reloadAction(form)))
 
     addView(form)
     #setFocus(form, "globals")

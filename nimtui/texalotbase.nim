@@ -111,6 +111,7 @@ type
         onFocus*: proc(v: Widget)
         onAction*: proc(v: Widget)
         onUpdate*: proc(v: Widget)
+        onRepaint*: proc(v: Widget)
         onQuit*: proc(v: Widget)
 
     Widget* = ref object of RootObj
@@ -367,27 +368,50 @@ proc calculateXY(w: Widget) =
     let parent = w.parent
     case w.align
     of NONE: # x,y used
-        discard
+        x = w.x
+        y = w.y
     of TOP_RIGHT:
-        w.x = parent.x + parent.width - parent.frame*2 - w.name.len - w.frame*2
-        w.y = parent.y
+        x = parent.x + parent.width - parent.frame*2 - w.name.len - (w.frame*1) - 1
+        log(fmt"x:{x} w.name:{w.name} w.name.len:{w.name.len}")
+        #x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
+        for c in parent.childs:
+            if c.align == TOP_RIGHT and c.x > 0:
+                #x = c.x + parent.x - parent.frame - c.name.len - c.frame - 1
+                x = c.x - parent.frame*2 - c.name.len - (c.frame*2) - 1
+        y = parent.y
     of TOP_LEFT:
-        discard 
+        x = parent.x + parent.frame
+        for c in parent.childs:
+            if c.align == TOP_LEFT and c.x > 0:
+                x = c.x - parent.x + parent.frame + c.name.len + c.frame
+        y = parent.y
     of TOP_CENTER:
-        discard      
+        x = (parent.x + parent.width) div 2 - (w.name.len div 2)
+        for c in parent.childs:
+            if c.align == TOP_CENTER and c.x > 0:
+                x = c.x - w.name.len - 1
+        y = parent.y
     of BOT_RIGHT:  
-        w.x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
-        w.y = parent.y + parent.height - parent.frame - w.frame*2
+        x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
+        for c in parent.childs:
+            if c.align == BOT_RIGHT and c.x > 0:
+                x = c.x - parent.frame*2 - c.name.len - c.frame*2
+        y = parent.y + parent.height - parent.frame - w.frame*2
     of BOT_LEFT:
-        var maxx: int
+        x = parent.x + parent.frame
         for c in parent.childs:
             if c.align == BOT_LEFT and c.x > 0:
-                maxx = c.x - parent.x + c.name.len + c.frame
-        w.x = maxx + parent.x + parent.frame
-        w.y = parent.y + parent.height - parent.frame - w.frame*2
-    of BOT_CENTER: 
-        w.x = ((w.x + w.width) div 2) + w.x + w.frame
-        w.y = parent.y + parent.height - parent.frame - w.frame*2
+                x = c.x - parent.x + parent.frame + c.name.len + c.frame
+        y = parent.y + parent.height - parent.frame - w.frame*2
+    of BOT_CENTER:
+        x = (parent.x + parent.width) div 2 - (w.name.len div 2)
+        for c in parent.childs:
+            if c.align == BOT_CENTER and c.x > 0:
+                x = c.x - w.name.len - 1
+        y = parent.y + parent.height - parent.frame - (w.frame*1 + 1)
+    
+    w.x = x
+    w.y = y
 
 proc add*(parent: Widget, w: Widget) =
     if w != nil and w.id.isEmptyOrWhitespace: raise newException(ValueError, "Must have a id")
@@ -594,6 +618,7 @@ proc setValue*(v: Widget, id: string, value: string) =
                 return
             elif child of Label:
                 Label(child).name = value
+                return
 
     echo "No child with id ", id, " found!"
 
@@ -1177,6 +1202,8 @@ proc enterEditLoop*() =
         updateFocus()
         v = getFocus()
         processBaseEvents(v)
+        if v.action != nil and v.action.onRepaint != nil:
+            v.action.onRepaint(v)
 
         # Update state(s)
         modal = isModal()
