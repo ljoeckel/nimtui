@@ -92,9 +92,25 @@ if isMainModule:
     let yoff = 6
     var cnt = 0
 
-    form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height)
-    row = Row(id:"row", y:1, height:height-yoff, layout:H2_30)
-    row.add(ListBox(id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1, focus:true))
+    proc formAction(v: Widget): Action = 
+        result = Action(view:v)
+        result.onRepaint = proc(v: Widget) =
+            setValue(v, "time", now().format("HH:mm:ss"))
+            setValue(row, "time", now().format("HH:mm:ss"))
+            
+        
+    form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height, action:formAction(form))
+    form.add(Label(id:"time", name:"00:00:00", align:TOP_RIGHT, textstyle:ALARM))
+    form.add(Label(id:"lbll1", name:"LEFT1", align:TOP_LEFT, textstyle:ALARM))
+    form.add(Label(id:"lbll2", name:"LEFT2", align:TOP_LEFT, textstyle:ALARM))
+    form.add(Label(id:"cntr1", name:"12345678901234567890", align:TOP_CENTER, textstyle:ALARM))
+    form.add(Label(id:"cntr2", name:"ABCDEFG", align:TOP_CENTER, textstyle:ALARM))
+    form.add(Label(id:"cntr3", name:"abcdefg", align:BOT_CENTER, textstyle:ALARM))
+
+    #row = Row(id:"row", layout:Layout.H3_66, y:2, height:height-yoff, textstyle:DEBUG)
+    row = Row(id:"row", y:2, layout:Layout.H3_66, bound:1, height:height-yoff, textstyle:DEBUG)
+    row.add(Label(id:"time", name:"00:00:00", textstyle:ALARM))
+    row.add(ListBox(focus:true, id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1))
     row.add(ListBox(id:"global", name:"Global", provider:globalProvider, frame:1))
     form.add(row)
 
@@ -140,6 +156,9 @@ if isMainModule:
                 statsdlg.add(TextField(id:"processed", editable:false, x:1, y:6, name:"Duration    : ", len:8))
 
                 statsdlg.add(Button(id:"close", name:"Close", frame:1, align:BOT_RIGHT, action:closeView(statsdlg)))
+                statsdlg.add(Button(id:"left", name:"LEFT", frame:1, align:BOT_LEFT, action:closeView(statsdlg)))
+                statsdlg.add(Button(id:"close4", name:"NONE", frame:1, x:15, y:7, action:closeView(statsdlg)))
+                statsdlg.add(Label(id:"lbl5", name:"A LABEL", frame:0, x:25, y:6))
                 
                 addView(statsdlg)
                 setFocus(statsdlg, "close")
@@ -160,10 +179,10 @@ if isMainModule:
             onExit()
 
     form.add(Button(frame:1, id:"kill", name:"Kill", align:BOT_LEFT, action:killAction(form)))    
-    form.add(Button(frame:1, id:"reload", name:"Reload", align:BOT_LEFT, action:reloadAction(form)))
     form.add(Button(frame:1, id:"stats", name:"Stats", align:BOT_LEFT, action:statsAction(form)))    
     form.add(Button(frame:1, id:"quit", name:"Quit", align:BOT_RIGHT, action:quitAction(form)))    
+    form.add(Button(frame:1, id:"reload", name:"Reload", align:BOT_RIGHT, action:reloadAction(form)))
 
     addView(form)
-    setFocus(form, "globals")
+    #setFocus(form, "globals")
     enterEditLoop()
