@@ -449,6 +449,54 @@ proc calculateRow(v: Widget) =
         setWidth(@[20.0, 20.0, 20.0, 20.0, 20.0])        
 
 
+# proc calculateXY(w: Widget) =
+#     var x,y: int
+#     let parent = w.parent
+
+#     case w.align
+#     of NONE: # x,y used
+#         x = w.x
+#         y = w.y
+#     of TOP_RIGHT:
+#         x = parent.x + parent.width - parent.frame*2 - w.name.len - (w.frame*1) - 1
+#         for c in parent.childs:
+#             if c.align == TOP_RIGHT and c.x > 0:
+#                 x = c.x - parent.frame*2 - c.name.len - (c.frame*2) - 1
+#         y = parent.y
+#     of TOP_LEFT:
+#         x = parent.x + parent.frame
+#         for c in parent.childs:
+#             if c.align == TOP_LEFT and c.x > 0:
+#                 x = c.x - parent.x + parent.frame + c.name.len + c.frame
+#         y = parent.y
+#     of TOP_CENTER:
+#         x = (parent.x + parent.width) div 2 - (w.name.len div 2)
+#         for c in parent.childs:
+#             if c.align == TOP_CENTER and c.x > 0:
+#                 x = c.x - w.name.len - 1
+#         y = parent.y
+#     of BOT_RIGHT:  
+#         x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
+#         for c in parent.childs:
+#             if c.align == BOT_RIGHT and c.x > 0:
+#                 x = c.x - parent.frame*2 - c.name.len - c.frame*2
+#         y = parent.y + parent.height - parent.frame - w.frame*2
+#     of BOT_LEFT:
+#         x = parent.x + parent.frame
+#         for c in parent.childs:
+#             if c.align == BOT_LEFT and c.x > 0:
+#                 x = c.x - parent.x + parent.frame + c.name.len + c.frame
+#         y = parent.y + parent.height - parent.frame - w.frame*2
+#     of BOT_CENTER:
+#         x = (parent.x + parent.width) div 2 - (w.name.len div 2)
+#         for c in parent.childs:
+#             if c.align == BOT_CENTER and c.x > 0:
+#                 x = c.x - w.name.len - 1
+#         y = parent.y + parent.height - parent.frame - (w.frame*1 + 1)
+    
+#     w.x = x
+#     w.y = y
+
 proc calculateXY(w: Widget) =
     var x,y: int
     let parent = w.parent
@@ -470,10 +518,12 @@ proc calculateXY(w: Widget) =
                 x = c.x - parent.x + parent.frame + c.name.len + c.frame
         y = parent.y
     of TOP_CENTER:
-        x = (parent.x + parent.width) div 2 - (w.name.len div 2)
+        x = parent.x + (((parent.width + (w.name.len / 2).int) / 2)).int
+        #x = (parent.x + parent.width) div 2 - (w.name.len div 2)
         for c in parent.childs:
             if c.align == TOP_CENTER and c.x > 0:
-                x = c.x - w.name.len - 1
+                #x = c.x - w.name.len - 1
+                x = c.x - w.name.len - w.frame - parent.frame
         y = parent.y
     of BOT_RIGHT:  
         x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
@@ -488,12 +538,16 @@ proc calculateXY(w: Widget) =
                 x = c.x - parent.x + parent.frame + c.name.len + c.frame
         y = parent.y + parent.height - parent.frame - w.frame*2
     of BOT_CENTER:
-        x = (parent.x + parent.width) div 2 - (w.name.len div 2)
+        #x = parent.x + ((parent.width + w.name.len) / 2).int
+        x = parent.x - w.frame - parent.frame - (w.name.len / 2).int + ((parent.width ) / 2).int
+        log("<542")
+        #x = parent.x + (((parent.width + (w.name.len / 2).int) / 2)).int
         for c in parent.childs:
             if c.align == BOT_CENTER and c.x > 0:
-                x = c.x - w.name.len - 1
+                log(fmt"543 c.id:{c.id} c.x:{c.x} w.x:{w.x} w.id:{w.id}")
+                x = c.x - w.name.len - w.frame - parent.frame
         y = parent.y + parent.height - parent.frame - (w.frame*1 + 1)
-    
+        log("549>")
     w.x = x
     w.y = y
 
@@ -1116,7 +1170,8 @@ proc drawButton*(btn: Button) =
     let width = btn.name.len
 
     let enabled = if btn.action != nil and btn.action.isEnabled != nil: btn.action.isEnabled() else: true
-    var style = if enabled: BTN_TEXT else: FAINT
+    var style = if btn.textstyle != DEFAULT: btn.textstyle else: BTN_TEXT
+    if not enabled: style = FAINT
     if modal and btn.parent.modal == false:
         style = MODAL
 
@@ -1250,6 +1305,7 @@ proc enterEditLoop*() =
     # set focus on first editfield
     var v = getFocus() # view!
     #toFirstEditField(v)
+
     processBaseEvents(v)
     drawViews()
     texalotRender()

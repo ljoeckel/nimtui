@@ -85,6 +85,28 @@ connectGlobalSelectionChanged(proc(value: string) =
     onGlobalsSelectionChanged(value)
 )
 
+proc YesNoDialog(title: string, content: string, action: proc()) =
+    proc onYes(v: Widget): Action = 
+        result = Action(view: v)
+        result.onAction = proc(v: Widget) =
+            action()
+            removeView(v.id)
+
+    proc onNo(v: Widget): Action =
+        result = Action(view: v)
+        result.onAction = proc(v: Widget) =
+            removeView(v.id)
+
+    var dlg: Dialog
+    if findView("dlg").isNil:
+        dlg = Dialog(frame:1, id:"yesno", modal:true, name:title.toUpper(), x:20, y:3, height:11, width:40)
+        dlg.add(Label(id:"lbl", x:1, y:2, name:content))
+        dlg.add(Button(id:"yes", name:"Yesyesyes", frame:1, textstyle:FAINT, align:BOT_CENTER, action:onYes(dlg)))
+        dlg.add(Button(id:"no", name:"Nonono", frame:1, align:BOT_CENTER, action:onNo(dlg)))
+        addView(dlg)
+        setFocus(dlg, "no")
+
+
 if isMainModule:
     init()
     let width = getTerminalWidth()
@@ -109,13 +131,28 @@ if isMainModule:
                 selectChild(child)
 
     proc killAction(v: Widget): Action = 
-        result = Action(view: v)
-        result.onAction = proc(v: Widget) =
+        result = Action(view:v)
+        proc killGlobalVar() =
             let gbl = v.getValue("global")
-            kill: @gbl
+            #kill: @gbl
+            echo "kill global var ", gbl
+            #let gbl = v.getValue("global")
+            #kill: @gbl
             var reload = v.findChild("reload")
             if reload != nil and reload of Button:
                 reload.action.onAction(form)
+
+        result.onAction = proc(v: Widget) =
+            YesNoDialog("Kill Global", "Really kill global?", killGlobalVar)
+
+    # proc killAction(v: Widget): Action = 
+    #     result = Action(view: v)
+    #     result.onAction = proc(v: Widget) =
+    #         let gbl = v.getValue("global")
+    #         kill: @gbl
+    #         var reload = v.findChild("reload")
+    #         if reload != nil and reload of Button:
+    #             reload.action.onAction(form)
 
     proc statsAction(v: Widget): Action = 
         result = Action(view: v)
