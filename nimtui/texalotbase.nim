@@ -79,10 +79,13 @@ type
     Align* = enum 
         NONE,
         TOP_LEFT,
-        TOP_CENTER,
-        TOP_RIGHT,
+        MID_LEFT,
         BOT_LEFT,
+        TOP_CENTER,
+        MID_CENTER,
         BOT_CENTER,
+        TOP_RIGHT,
+        MID_RIGHT,
         BOT_RIGHT
 
     Layout* = enum 
@@ -209,15 +212,14 @@ macro defineSignal*(name: untyped; T: typed): untyped =
 
   result = quote do:
     type
-      #`sigName` = proc(value: `T`) {.nimcall.}
       `sigName` = proc(value: `T`) {.closure.}
 
     var `handlersName`: seq[`sigName`] = @[]
 
-    proc `connectName`(cb: `sigName`) =
+    proc `connectName`*(cb: `sigName`) =
       `handlersName`.add(cb)
 
-    proc `emitName`(value: `T`) =
+    proc `emitName`*(value: `T`) =
       for cb in `handlersName`:
         cb(value)
 
@@ -449,107 +451,76 @@ proc calculateRow(v: Widget) =
         setWidth(@[20.0, 20.0, 20.0, 20.0, 20.0])        
 
 
-# proc calculateXY(w: Widget) =
-#     var x,y: int
-#     let parent = w.parent
-
-#     case w.align
-#     of NONE: # x,y used
-#         x = w.x
-#         y = w.y
-#     of TOP_RIGHT:
-#         x = parent.x + parent.width - parent.frame*2 - w.name.len - (w.frame*1) - 1
-#         for c in parent.childs:
-#             if c.align == TOP_RIGHT and c.x > 0:
-#                 x = c.x - parent.frame*2 - c.name.len - (c.frame*2) - 1
-#         y = parent.y
-#     of TOP_LEFT:
-#         x = parent.x + parent.frame
-#         for c in parent.childs:
-#             if c.align == TOP_LEFT and c.x > 0:
-#                 x = c.x - parent.x + parent.frame + c.name.len + c.frame
-#         y = parent.y
-#     of TOP_CENTER:
-#         x = (parent.x + parent.width) div 2 - (w.name.len div 2)
-#         for c in parent.childs:
-#             if c.align == TOP_CENTER and c.x > 0:
-#                 x = c.x - w.name.len - 1
-#         y = parent.y
-#     of BOT_RIGHT:  
-#         x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
-#         for c in parent.childs:
-#             if c.align == BOT_RIGHT and c.x > 0:
-#                 x = c.x - parent.frame*2 - c.name.len - c.frame*2
-#         y = parent.y + parent.height - parent.frame - w.frame*2
-#     of BOT_LEFT:
-#         x = parent.x + parent.frame
-#         for c in parent.childs:
-#             if c.align == BOT_LEFT and c.x > 0:
-#                 x = c.x - parent.x + parent.frame + c.name.len + c.frame
-#         y = parent.y + parent.height - parent.frame - w.frame*2
-#     of BOT_CENTER:
-#         x = (parent.x + parent.width) div 2 - (w.name.len div 2)
-#         for c in parent.childs:
-#             if c.align == BOT_CENTER and c.x > 0:
-#                 x = c.x - w.name.len - 1
-#         y = parent.y + parent.height - parent.frame - (w.frame*1 + 1)
-    
-#     w.x = x
-#     w.y = y
-
 proc calculateXY(w: Widget) =
     var x,y: int
     let parent = w.parent
 
+    proc collectChilds(childs: seq[Widget], align: Align): (seq[Widget], int) =
+        # calculate width of all elements
+        var achilds: seq[Widget]
+        var totalLen = 0
+        for c in childs:
+            if c.align == align:
+                achilds.add(c)
+                if c of Label: inc(totalLen, c.name.len)
+                elif c of Button: inc(totalLen, c.name.len)
+                elif c of TextField: inc(totalLen, c.name.len + TextField(c).len)
+                else: inc(totalLen, c.width)
+                inc(totalLen, c.frame*2)
+        inc(totalLen, achilds.len-1) # separator spacing
+        return (achilds, totalLen)                
+
+    proc calcChildsPosL(alignment:Align, y: int) =
+        let (childs, totalWidth) = collectChilds(parent.childs, alignment)
+        x = parent.x + parent.frame
+        for c in childs:
+            c.x = x
+            c.y = y
+            inc(x, c.name.len + c.frame*2)
+
+    proc calcChildsPosR(alignment:Align, y: int) =
+        let (childs, totalWidth) = collectChilds(parent.childs, alignment)
+        x = parent.x + parent.width - parent.frame
+        for c in childs:
+            dec(x, c.name.len + c.frame*2)
+            c.x = x
+            c.y = y
+
+    proc calcChildsPosC(alignment:Align, y: int) =
+        let (childs, totalWidth) = collectChilds(parent.childs, alignment)
+        x = parent.x + ((parent.width - totalWidth) / 2).int
+        for c in childs:
+            c.x = x
+            c.y = y
+            inc(x, c.name.len + c.frame*2)
+
     case w.align
     of NONE: # x,y used
-        x = w.x
-        y = w.y
+        discard
     of TOP_RIGHT:
-        x = parent.x + parent.width - parent.frame*2 - w.name.len - (w.frame*1) - 1
-        for c in parent.childs:
-            if c.align == TOP_RIGHT and c.x > 0:
-                x = c.x - parent.frame*2 - c.name.len - (c.frame*2) - 1
-        y = parent.y
+        calcChildsPosR(TOP_RIGHT, parent.y)
+    of MID_RIGHT:
+        y = ((parent.y + parent.height - parent.frame - w.frame*2) / 2).int
+        calcChildsPosR(MID_RIGHT, y)
+    of BOT_RIGHT:
+        y = parent.y + parent.height - parent.frame - w.frame*2
+        calcChildsPosR(BOT_RIGHT, y)
     of TOP_LEFT:
-        x = parent.x + parent.frame
-        for c in parent.childs:
-            if c.align == TOP_LEFT and c.x > 0:
-                x = c.x - parent.x + parent.frame + c.name.len + c.frame
-        y = parent.y
-    of TOP_CENTER:
-        x = parent.x + (((parent.width + (w.name.len / 2).int) / 2)).int
-        #x = (parent.x + parent.width) div 2 - (w.name.len div 2)
-        for c in parent.childs:
-            if c.align == TOP_CENTER and c.x > 0:
-                #x = c.x - w.name.len - 1
-                x = c.x - w.name.len - w.frame - parent.frame
-        y = parent.y
-    of BOT_RIGHT:  
-        x = parent.x + parent.width - parent.frame - w.name.len - w.frame*2
-        for c in parent.childs:
-            if c.align == BOT_RIGHT and c.x > 0:
-                x = c.x - parent.frame*2 - c.name.len - c.frame*2
-        y = parent.y + parent.height - parent.frame - w.frame*2
+        calcChildsPosL(TOP_LEFT, parent.y)
+    of MID_LEFT:
+        y = ((parent.y + parent.height - parent.frame - w.frame*2) / 2).int
+        calcChildsPosL(MID_LEFT, y)
     of BOT_LEFT:
-        x = parent.x + parent.frame
-        for c in parent.childs:
-            if c.align == BOT_LEFT and c.x > 0:
-                x = c.x - parent.x + parent.frame + c.name.len + c.frame
         y = parent.y + parent.height - parent.frame - w.frame*2
+        calcChildsPosL(BOT_LEFT, y)
+    of TOP_CENTER:
+        calcChildsPosC(TOP_CENTER, parent.y)
+    of MID_CENTER:
+        y = ((parent.y + parent.height) / 2).int
+        calcChildsPosC(MID_CENTER, y)
     of BOT_CENTER:
-        #x = parent.x + ((parent.width + w.name.len) / 2).int
-        x = parent.x - w.frame - parent.frame - (w.name.len / 2).int + ((parent.width ) / 2).int
-        log("<542")
-        #x = parent.x + (((parent.width + (w.name.len / 2).int) / 2)).int
-        for c in parent.childs:
-            if c.align == BOT_CENTER and c.x > 0:
-                log(fmt"543 c.id:{c.id} c.x:{c.x} w.x:{w.x} w.id:{w.id}")
-                x = c.x - w.name.len - w.frame - parent.frame
         y = parent.y + parent.height - parent.frame - (w.frame*1 + 1)
-        log("549>")
-    w.x = x
-    w.y = y
+        calcChildsPosC(BOT_CENTER, y)
 
 
 proc add*(parent: Widget, w: Widget) =
@@ -566,8 +537,8 @@ proc add*(parent: Widget, w: Widget) =
         w.align = Align.BOT_LEFT
 
     w.parent = parent
-    calculateXY(w)
     parent.childs.add(w)
+    calculateXY(w)
     #log(fmt"add parent.id:{parent.id} w.id:{w.id}")
 
 
