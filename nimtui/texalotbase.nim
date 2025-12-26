@@ -3,6 +3,7 @@ import std/strformat
 import std/unicode
 import std/os
 import std/tables
+import std/math
 import macros
 import texalot
 
@@ -53,7 +54,7 @@ const
 
     MODAL* = TextStyle(fg: Gray, bg: Light_gray, style: STYLE_FAINT)
     ALARM* = TextStyle(fg: Red, bg: White, style: STYLE_NONE)
-    DEBUG* = TextStyle(fg: Deep_sky_blue, bg: Linen, style: STYLE_NONE)
+    DEBUG* = TextStyle(fg: Green, bg: Khaki, style: STYLE_NONE)
     DEFAULT* = TextStyle(fg: DefaultFG, bg: DefaultBG, style: STYLE_NONE)
     FRAME_FOCUS* = TextStyle(fg: Dark_green, bg: DefaultBG, style: STYLE_NONE)
     FRAME_FOCUS_MODAL* = TextStyle(fg: Dark_goldenrod, bg: DefaultBG, style: STYLE_NONE)    
@@ -123,7 +124,9 @@ type
         x*: int = 0
         y*: int = 0
         width*: int
+        maxwidth*: int
         height*: int
+        maxheight*: int
         align*: Align = Align.NONE
         editX*: int
         editY*: int
@@ -185,6 +188,7 @@ type
         lines*: seq[string]
         selectionChanged*: proc(value:string)
 
+
 var
     views*: seq[Widget]
     currentFocus*: int
@@ -227,7 +231,7 @@ proc addView*(v: Widget) =
     if v.id.isEmptyOrWhitespace: raise newException(ValueError, "'id' must be set for View")
     # View already there?
     for view in views: 
-        if view.id == v.id: return 
+        if view.id == v.id: raise newException(ValueError, fmt"View '{view.id}' already there")
     views.add(v)
 
 
@@ -295,8 +299,13 @@ proc pageDown*(lb: var ListBox) =
 
 func offset(v: Widget, w: Widget): (int, int) =
     result = (v.x + w.x + v.frame, v.y + w.y + v.frame)
+
 func offset(w: Widget): (int, int) =
-    offset(w.parent, w)
+    if w.parent != nil:
+        result = offset(w.parent, w)
+    else:
+        result = (w.x, w.y)    
+
 func offset(v: Widget, x: int, y: int): (int, int) =
     result = (v.x + x + v.frame, v.y + y + v.frame)
 
@@ -356,9 +365,7 @@ proc collectChilds(v: Widget): (seq[Widget], int) =
     collectChilds(v, Widget)
 
 proc deselectButton(v: Widget) =
-    var buttons: seq[Widget]
-    for child in v.childs:
-        if child of Button: buttons.add(child)
+    var (buttons, _) = collectChilds(v, Button)
     if buttons.len > 1: # dont flicker a single button
         for child in buttons:
             child.selected = false
@@ -369,31 +376,51 @@ proc selectButton*(w: Widget) =
     if w of Button:
         w.selected = true
 
+proc drawBox(v: Widget) =
+    #log(fmt"drawBox v.id:{v.id} textstyle:{v.textstyle}")
+    let x = v.x
+    let x2 = x + v.width
+    let y2 = v.y + v.height
+    var (bg, fg, charstyle) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
+    if modal and not v.modal:
+        bg = MODAL.bg
+        fg = MODAL.fg
+        charstyle = MODAL.style
+    drawRectangle(x, v.y, x2, y2, bg, fg, v.ch, charstyle) 
+
+
+
 proc calculateRow(v: Widget) =
+    #log(fmt"   calculateRow v.id:{v.id}")
     let row = Row(v.parent)
     if row.childs.len == 0: return
 
     let width = row.width
     let height = row.height
 
-    func calcWidth(p: float): int =
-        (width.float / 100.0 * p).int
+    func calcWidth(width: int, p: float): int =
+       result = round((width.float / 100.0 * p)).int
+
 
     proc setWidth(percents: seq[float]) =
-        if row.childs.len > percents.len: raise newException(ValueError, "Too many children in row for this layout ("& $row.layout & ")")
+        if row.childs.len > percents.len: raise newException(ValueError, "Too many children in row for this layout (" & $row.layout & ")")
         for pos, c in row.childs:
             if c.id == v.id:
                 if pos == 0:
-                    v.width = calcWidth(percents[pos]) - row.frame - c.frame
+                    v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
                 else:
-                    v.width = calcWidth(percents[pos]) - row.frame - c.frame - 1
+                    v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
+                    # Recalculate x-position
                     var posx = 0
                     for i in 0..<pos:
-                        inc(posx, row.x + calcWidth(percents[i]))
-                    v.x = posx# - row.frame
+                        let width = calcWidth(row.width, percents[i])
+                        inc(posx, width)
+                        #inc(posx, row.x + calcWidth(percents[i]) - row.frame*2 - c.frame )
+                    v.x = posx #- row.frame*2 - c.frame
                 
                 v.height = row.height - v.frame
                 break
+
 
     case row.layout
     of NONE:
@@ -404,29 +431,34 @@ proc calculateRow(v: Widget) =
         if row.width == 0: # 1.pass calculate Row width
             var rwidth = row.frame + row.parent.frame
             for pos, c in row.childs:
-                #echo fmt"rwidth={rwidth} row.width={row.width} pos={pos} c.id:{c.id}"
                 c.x = rwidth
                 if c of Label: inc(rwidth, c.name.len)
                 elif c of TextField: inc(rwidth, c.name.len + TextField(c).len)
                 else: inc(rwidth, c.width)
                 inc(rwidth, row.bound)
-            row.width = rwidth   
+            row.width = rwidth
         if row.expand:
             # 2. pass Place evenly childs within Row
             var ewidth = (row.width / row.childs.len).int
             for i in 0..<row.childs.len:
                 row.childs[i].x = i*ewidth + i*row.bound + 1
         else:
-            var hx = row.parent.frame
+            log(fmt"row.parent.x:{row.parent.x} row.parent.frame:{row.parent.frame}")
+            var hx = row.parent.x + row.parent.frame
             # Add child by child
             for c in row.childs:
                 c.x = hx
+                if c.y == 0:
+                    c.y = c.parent.y
+                elif c.y > c.parent.y + c.height:
+                    c.y = c.parent.y + c.parent.height - 1 # Limit y to parent dimensions
+                log(fmt"c.id:{c.id} c.x:{c.x}")
                 if c of Label: inc(hx, c.name.len)
                 elif c of TextField: inc(hx, c.name.len + TextField(c).len)
+                elif c of Button: inc(hx, c.name.len + c.frame)
                 else: inc(hx, c.width)
                 inc(hx, row.bound)
                 if c.height == 0: c.height = row.height
-                
     of H2_10:
         setWidth(@[10.0, 90.0])
     of H2_20:
@@ -476,13 +508,13 @@ proc calculateXY(w: Widget) =
         for c in childs:
             c.x = x
             c.y = y
-            inc(x, c.name.len + c.frame*2)
+            inc(x, c.name.len + c.frame*2 + 1)
 
     proc calcChildsPosR(alignment:Align, y: int) =
         let (childs, totalWidth) = collectChilds(parent.childs, alignment)
         x = parent.x + parent.width - parent.frame
         for c in childs:
-            dec(x, c.name.len + c.frame*2)
+            dec(x, c.name.len + c.frame*2 + 1)
             c.x = x
             c.y = y
 
@@ -492,41 +524,38 @@ proc calculateXY(w: Widget) =
         for c in childs:
             c.x = x
             c.y = y
-            inc(x, c.name.len + c.frame*2)
+            inc(x, c.name.len + c.frame*2 + 1)
 
+    let yBOT = parent.y + parent.height - parent.frame*2
+    let yMID = ((parent.y + parent.height - parent.frame - w.frame*2) / 2).int
+    let yTOP = parent.y + parent.frame + w.frame
     case w.align
     of NONE: # x,y used
         discard
     of TOP_RIGHT:
-        calcChildsPosR(TOP_RIGHT, parent.y)
+        calcChildsPosR(TOP_RIGHT, yTOP)
     of MID_RIGHT:
-        y = ((parent.y + parent.height - parent.frame - w.frame*2) / 2).int
-        calcChildsPosR(MID_RIGHT, y)
+        calcChildsPosR(MID_RIGHT, yMID)
     of BOT_RIGHT:
-        y = parent.y + parent.height - parent.frame - w.frame*2
-        calcChildsPosR(BOT_RIGHT, y)
+        calcChildsPosR(BOT_RIGHT, yBOT)
     of TOP_LEFT:
-        calcChildsPosL(TOP_LEFT, parent.y)
+        calcChildsPosL(TOP_LEFT, yTOP)
     of MID_LEFT:
-        y = ((parent.y + parent.height - parent.frame - w.frame*2) / 2).int
-        calcChildsPosL(MID_LEFT, y)
+        calcChildsPosL(MID_LEFT, yMID)
     of BOT_LEFT:
-        y = parent.y + parent.height - parent.frame - w.frame*2
-        calcChildsPosL(BOT_LEFT, y)
+        calcChildsPosL(BOT_LEFT, yBOT)
     of TOP_CENTER:
-        calcChildsPosC(TOP_CENTER, parent.y)
+        calcChildsPosC(TOP_CENTER, yTOP)
     of MID_CENTER:
-        y = ((parent.y + parent.height) / 2).int
-        calcChildsPosC(MID_CENTER, y)
+        calcChildsPosC(MID_CENTER, yMID)
     of BOT_CENTER:
-        y = parent.y + parent.height - parent.frame - (w.frame*1 + 1)
-        calcChildsPosC(BOT_CENTER, y)
+        calcChildsPosC(BOT_CENTER, yBOT)
 
 
 proc add*(parent: Widget, w: Widget) =
     if w != nil and w.id.isEmptyOrWhitespace: raise newException(ValueError, "Must have a id")
     #if w of Row and w.layout == Layout.NONE and (w.width == 0 or w.height == 0):
-    #    raise newException(ValueError, "Must have width & height")
+    #    raise newException(ValueError, "'Row' must have width & height or a layout")
 
     for child in parent.childs:
         # check for duplicate id
@@ -966,17 +995,33 @@ proc processBaseEvents*(v: var Widget) =
         # resize events only valid for View's (not subdialogs)
         for view in views:
             if not (view of View): return
+
+            # resize view to terminal or defined maxwidth/maxheight
             view.height = getTerminalHeight()
+            if view.maxheight > 0 and view.height > view.maxheight:
+                view.height = view.maxheight
+
             view.width = getTerminalWidth()
+            if view.maxwidth > 0 and view.width > view.maxwidth:
+                view.width = view.maxwidth
+
+            # Trigger recalculate Rows
+            for child in view.childs:
+                if child of Row and child.layout != NONE:
+                    child.y = 0
+                    child.height = 0
+
             let (collected, _) = collectChilds(view)
             # reset all aligned widgets
             for child in collected:
                 if child.align != NONE:
                     child.x = 0
                     child.y = 0
-            # recalculate xy for aligned widgets
+
+            # recalculate xy for all widgets
             for child in collected:
                 calculateXY(child)
+
     elif texalotEvent of MouseEvent:
         let ev = MouseEvent(texalotEvent)
         var child = findChild(v, ev)
@@ -1070,16 +1115,17 @@ proc drawFrame*(v: Widget, bxch: array[6, string]) =
 proc drawOuterFrame*(v: var Widget) =
     drawFrame(v, BOX_CHARS_FRAME)
 
-proc drawBox(v: Widget) =
-    let x = v.x
-    let x2 = x + v.width
-    let y2 = v.y + v.height
-    var (bg, fg, charstyle) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
-    if modal and not v.modal:
-        bg = MODAL.bg
-        fg = MODAL.fg
-        charstyle = MODAL.style
-    drawRectangle(x, v.y, x2, y2, bg, fg, v.ch, charstyle) 
+# proc drawBox(v: Widget) =
+#     log(fmt"drawBox v.id:{v.id} textstyle:{v.textstyle}")
+#     let x = v.x
+#     let x2 = x + v.width
+#     let y2 = v.y + v.height
+#     var (bg, fg, charstyle) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
+#     if modal and not v.modal:
+#         bg = MODAL.bg
+#         fg = MODAL.fg
+#         charstyle = MODAL.style
+#     drawRectangle(x, v.y, x2, y2, bg, fg, v.ch, charstyle) 
 
 
 
@@ -1105,12 +1151,11 @@ proc editTextField*(v: Widget) =
         drawChar(charAtX, cursorStyle)
 
 
-proc drawLabel(t: Label, style: TextStyle) =
-    #let (x,y) = offset(t.parent, t.x, t.y)
-    let (x,y) = offset(t.parent, t)
-    var stl = if t.textstyle != DEFAULT: t.textstyle else: style
-    if modal and t.parent.modal == false: stl = MODAL
-    drawText(t.name, x, y, stl)
+proc drawLabel*(lbl: Label, style: TextStyle) =
+    #let (x,y) = offset(lbl)
+    var stl = if lbl.textstyle != DEFAULT: lbl.textstyle else: style
+    if modal and lbl.parent.modal == false: stl = MODAL
+    drawText(lbl.name, lbl.x, lbl.y, stl)
 
 
 proc drawTextField(t: TextField, style: TextStyle) =
@@ -1146,23 +1191,25 @@ proc drawButton*(btn: Button) =
     if modal and btn.parent.modal == false:
         style = MODAL
 
+    let styleTxt = if enabled and btn.selected: BTN_FOCUS else: style
     if btn.frame > 0:
-        # Draw box around
-        drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], x, y, FAINT)
-        drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], x, y+2, FAINT)
-        drawText(bxch[3], x, y+1, FAINT)
-        drawText(bxch[3], x2+1, y+1, FAINT)
+        drawText("[", x, y, styleTxt)
+        drawText("]", x+width+1, y, styleTxt)
+        # # Draw box around
+        # drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], x, y, FAINT)
+        # drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], x, y+2, FAINT)
+        # drawText(bxch[3], x, y+1, FAINT)
+        # drawText(bxch[3], x2+1, y+1, FAINT)
 
     # Draw Text
-    let styleTxt = if enabled and btn.selected: BTN_FOCUS else: style
-    drawText(btn.name, x+btn.frame, y+btn.frame, styleTxt)
+    #drawText(btn.name, x+btn.frame, y+btn.frame, styleTxt)
+    drawText(btn.name, x+btn.frame, y, styleTxt)
 
 
 proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
     let stl = if lb.textstyle != DEFAULT: lb.textstyle else: style
     let bxch = BTN_BOX_CHARS_FRAME
     let (x, y) = offset(lb.parent, lb)
-    #let (x, y) = offset(lb.parent, lb.x, lb.y)
     let x2 = x + lb.width
     let y2 = y + lb.height + lb.frame
     var style = if not lb.enabled: FAINT else: style
@@ -1208,25 +1255,38 @@ proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
     if lb.more: 
         drawText("\u2193", x + lb.width, y2, style)
 
-proc drawRow(g: Row) =
-    let (width, height) = (g.parent.width, g.parent.height)
-    if g.layout != NONE:
-        g.width = width - g.parent.frame*2
-        g.x = g.parent.x + g.parent.frame
-        drawBox(g)
+proc drawRow(row: Row) =
+    let parent = row.parent
+    # place Row inside parent bounds
+    if row.x == 0:
+        row.x = parent.x + parent.frame
+        if row.width == 0:
+            row.width = parent.width - parent.frame*2
+        log(fmt"parent.x:{parent.x}, parent.frame:{parent.frame} row.x:{row.x} row.width:{row.width}")
+    if row.y == 0:
+        row.y = parent.y + parent.frame
+        if row.height == 0:
+            row.height = parent.height - parent.frame*2
 
-    let parent = g.parent
-    for child in g.childs:
+    #log(fmt"drawRow id:{row.id} layout:{row.layout}")
+    let (width, height) = (row.parent.width, row.parent.height)
+    if row.layout != NONE: # dimensions not known yet (paint later)
+        row.width = width - parent.frame*2
+        row.x = parent.x + parent.frame
+        drawBox(row)
+    drawBox(row)
+
+    for child in row.childs:
         calculateRow(child)
         if child of TextField:
-            drawTextField(TextField(child), g.textstyle)
+            drawTextField(TextField(child), row.textstyle)
         elif child of Button:
             drawButton(Button(child))
         elif child of ListBox:
             var lb = ListBox(child)
-            drawListBox(lb, g.textstyle)
+            drawListBox(lb, row.textstyle)
         elif child of Label:
-            drawLabel(Label(child), g.textstyle)
+            drawLabel(Label(child), row.textstyle)
         else: discard
 
 
@@ -1295,51 +1355,16 @@ proc enterEditLoop*() =
         updateFocus()
         v = getFocus()
         processBaseEvents(v)
-        if v.action != nil and v.action.onRepaint != nil:
-            v.action.onRepaint(v)
 
         # Update state(s)
         modal = isModal()
 
         # Update UI
         drawViews()
+
+        # Paint from onRepaint() call       
+        if v.action != nil and v.action.onRepaint != nil:
+            v.action.onRepaint(v)
+
         texalotRender()
 
-
-# --------------
-# Providers
-# --------------
-# proc getProviderData(page: int, pagesize: int, data: seq[string]): (seq[string], bool) =
-#     var lower = page*pagesize
-#     if lower >= data.len: return
-#     var upper = lower + pagesize
-#     if upper > data.len: upper = data.len
-#     elif data.len < upper: upper = data.len
-#     let more = upper < data.len
-#     return (data[lower..<upper], more)
-
-#   proc walk(path: string): seq[string] =
-#     for kind, path in walkDir(path):
-#         case kind:
-#         of pcFile, pcLinkToFile:
-#             result.add(path)
-#         of pcDir, pcLinkToDir:
-#             result.add(walk(path))
-
-# const dirProviderCallback = proc(provider: var DataProvider, page: int, pagesize: int): (seq[string], bool) =
-#     provider.lines = walk(".")
-#     getProviderData(page, pagesize, provider.lines)
-
-# const fileProviderCallback = proc(provider: var DataProvider, page: int, pagesize: int): (seq[string], bool) =
-#     if provider.selected.len > 0 and provider.selected != provider.selectedBefore:
-#         if fileExists(provider.selected):
-#             provider.lines = split(readFile(provider.selected), "\n")
-#             provider.selectedBefore = provider.selected
-#     return getProviderData(page, pagesize, provider.lines)
-
-# const stringProviderCallback = proc(provider: var DataProvider, page: int, pagesize: int): (seq[string], bool) =
-#     return getProviderData(page, pagesize, @["Hello", "World", "aaaaa", "bbbbbb", "ccccccc", "dddddddd", "eeeeeee", "ffffff", "Hello2", "World2", "2aaaaa", "2bbbbbb", "2ccccccc", "2dddddddd", "2eeeeeee", "2ffffff"])
-#
-# var dirProvider = DataProvider(callback: dirProviderCallback)
-# var fileProvider = DataProvider(callback: fileProviderCallback)
-# var stringProvider = DataProvider(callback: stringProviderCallback)

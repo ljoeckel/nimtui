@@ -32,11 +32,10 @@ if isMainModule:
     init()
     let width = getTerminalWidth()
     let height = getTerminalHeight()
-    let yoff = 6
     var globalsProvider = YDBGlobals
 
-    form = View(id:"form", name:"Globals-Editor", frame:1, width:width, height:height)
-    row = Row(id:"row", y:1, height:height-yoff, layout:H2_30)
+    form = View(id:"form", name:"Globals-Viewer", frame:1, width:width, height:height)
+    row = Row(id:"row", layout:H2_30, textstyle:DEBUG)
     row.add(ListBox(id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1))
     row.add(ListBox(id:"global", name:"Global", provider:YDBGlobal, frame:1))
     form.add(row)
@@ -82,7 +81,10 @@ if isMainModule:
 
             var statsdlg: Dialog
             if findView("statsdlg").isNil:
-                statsdlg = Dialog(frame:1, id:"stats", modal:true, name:"Statistics", x:20, y:3, height:11, width:40)
+                let (width, height) = (40, 11)
+                let x = ((getTerminalWidth() - width) / 2).int
+                let y = ((getTerminalHeight() - height) / 2).int
+                statsdlg = Dialog(frame:1, x:x, y:y, id:"stats", modal:true, name:"Statistics", height:height, width:width)
                 statsdlg.add(TextField(id:"global", editable:false, x:1, y:0,    name:"Global      : ", len:20))
                 statsdlg.add(TextField(id:"records", editable:false, x:1, y:1,   name:"Recods      : ", len:12))
                 statsdlg.add(TextField(id:"keybytes", editable:false, x:1, y:2,  name:"Key bytes   : ", len:12))
@@ -119,12 +121,10 @@ if isMainModule:
             setValue(statsdlg, "datamax", $stats.datamax)            
             setValue(statsdlg, "processed", $stats.processed & " " & stats.unit)
 
-
-    let algn = BOT_CENTER
-    form.add(Button(frame:1, id:"kill", name:"Kill", align:algn, action:killAction(form)))    
-    form.add(Button(frame:1, id:"reload", name:"Reload", align:algn, action:reloadAction(form)))
-    form.add(Button(frame:1, id:"stats", name:"Stats", align:algn, action:statsAction(form)))    
-    form.add(Button(frame:1, id:"quit", name:"Quit", align:algn, action:QuitAction(form)))
+    form.add(Button(frame:1, id:"kill", name:"Kill", align:TOP_RIGHT, action:killAction(form)))    
+    form.add(Button(frame:1, id:"reload", name:"Reload", align:TOP_RIGHT, action:reloadAction(form)))
+    form.add(Button(frame:1, id:"stats", name:"Stats", align:TOP_RIGHT, action:statsAction(form)))    
+    form.add(Button(frame:1, id:"quit", name:"Quit", align:TOP_RIGHT, action:QuitAction(form)))
 
     addView(form)
     setFocus(form, "globals")
