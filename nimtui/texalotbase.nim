@@ -189,6 +189,11 @@ type
         selectionChanged*: proc(value:string)
 
 
+# ------ Forward Declarations ------
+proc drawOuterFrame*(v: var Widget)
+proc drawChilds(v: var Widget)
+proc recalculateViews()
+
 var
     views*: seq[Widget]
     currentFocus*: int
@@ -227,12 +232,19 @@ macro defineSignal*(name: untyped; T: typed): untyped =
       for cb in `handlersName`:
         cb(value)
 
+proc drawViews*() =
+    for v in views.mitems:
+        if v.visible:
+            drawOuterFrame(v)
+            drawChilds(v)
+
 proc addView*(v: Widget) =
     if v.id.isEmptyOrWhitespace: raise newException(ValueError, "'id' must be set for View")
     # View already there?
     for view in views: 
         if view.id == v.id: raise newException(ValueError, fmt"View '{view.id}' already there")
     views.add(v)
+    recalculateViews()
 
 
 proc findView*(id: string): Widget =
@@ -401,7 +413,6 @@ proc calculateRow(v: Widget) =
     func calcWidth(width: int, p: float): int =
        result = round((width.float / 100.0 * p)).int
 
-
     proc setWidth(percents: seq[float]) =
         if row.childs.len > percents.len: raise newException(ValueError, "Too many children in row for this layout (" & $row.layout & ")")
         for pos, c in row.childs:
@@ -410,25 +421,26 @@ proc calculateRow(v: Widget) =
                     v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
                 else:
                     v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
-                    # Recalculate x-position
-                    var posx = 0
-                    for i in 0..<pos:
-                        let width = calcWidth(row.width, percents[i])
-                        inc(posx, width)
-                        #inc(posx, row.x + calcWidth(percents[i]) - row.frame*2 - c.frame )
-                    v.x = posx #- row.frame*2 - c.frame
-                
+                # Recalculate x-position
+                var posx = row.x
+                for i in 0..<pos:
+                    let width = calcWidth(row.width, percents[i])
+                    inc(posx, width)
+                    #inc(posx, row.x + calcWidth(percents[i]) - row.frame*2 - c.frame )
+                v.x = posx #- row.frame*2 - c.frame
+                v.y = row.y
                 v.height = row.height - v.frame
                 break
 
 
     case row.layout
     of NONE:
+        log("426")
         if row.expand:
             row.width = row.parent.width - row.parent.frame*2
             row.x = row.parent.x + row.parent.frame*1
-
         if row.width == 0: # 1.pass calculate Row width
+            log("  431")
             var rwidth = row.frame + row.parent.frame
             for pos, c in row.childs:
                 c.x = rwidth
@@ -443,6 +455,7 @@ proc calculateRow(v: Widget) =
             for i in 0..<row.childs.len:
                 row.childs[i].x = i*ewidth + i*row.bound + 1
         else:
+            log("  446")
             log(fmt"row.parent.x:{row.parent.x} row.parent.frame:{row.parent.frame}")
             var hx = row.parent.x + row.parent.frame
             # Add child by child
@@ -452,13 +465,14 @@ proc calculateRow(v: Widget) =
                     c.y = c.parent.y
                 elif c.y > c.parent.y + c.height:
                     c.y = c.parent.y + c.parent.height - 1 # Limit y to parent dimensions
-                log(fmt"c.id:{c.id} c.x:{c.x}")
+                log(fmt"c.id:{c.id} c.x:{c.x} c.y:{c.y}")
                 if c of Label: inc(hx, c.name.len)
                 elif c of TextField: inc(hx, c.name.len + TextField(c).len)
                 elif c of Button: inc(hx, c.name.len + c.frame)
                 else: inc(hx, c.width)
                 inc(hx, row.bound)
                 if c.height == 0: c.height = row.height
+            
     of H2_10:
         setWidth(@[10.0, 90.0])
     of H2_20:
@@ -990,37 +1004,41 @@ proc removeView*(id: string) =
     if views.len > 0:
         setFocus(views[0])
 
+proc recalculateViews() =
+    # resize events only valid for View's (not subdialogs)
+    for view in views:
+        if not (view of View): return
+
+        # resize view to terminal or defined maxwidth/maxheight
+        view.height = getTerminalHeight()
+        if view.maxheight > 0 and view.height > view.maxheight:
+            view.height = view.maxheight
+
+        view.width = getTerminalWidth()
+        if view.maxwidth > 0 and view.width > view.maxwidth:
+            view.width = view.maxwidth
+
+        # Trigger recalculate Rows
+        for child in view.childs:
+            if child of Row and child.layout != NONE:
+                child.y = 0
+                child.height = 0
+
+        let (collected, _) = collectChilds(view)
+        # reset all aligned widgets
+        for child in collected:
+            if child.align != NONE:
+                child.x = 0
+                child.y = 0
+
+        # recalculate xy for all widgets
+        for child in collected:
+            calculateXY(child)
+
+
 proc processBaseEvents*(v: var Widget) =
     if texalotEvent of ResizeEvent:
-        # resize events only valid for View's (not subdialogs)
-        for view in views:
-            if not (view of View): return
-
-            # resize view to terminal or defined maxwidth/maxheight
-            view.height = getTerminalHeight()
-            if view.maxheight > 0 and view.height > view.maxheight:
-                view.height = view.maxheight
-
-            view.width = getTerminalWidth()
-            if view.maxwidth > 0 and view.width > view.maxwidth:
-                view.width = view.maxwidth
-
-            # Trigger recalculate Rows
-            for child in view.childs:
-                if child of Row and child.layout != NONE:
-                    child.y = 0
-                    child.height = 0
-
-            let (collected, _) = collectChilds(view)
-            # reset all aligned widgets
-            for child in collected:
-                if child.align != NONE:
-                    child.x = 0
-                    child.y = 0
-
-            # recalculate xy for all widgets
-            for child in collected:
-                calculateXY(child)
+        recalculateViews()
 
     elif texalotEvent of MouseEvent:
         let ev = MouseEvent(texalotEvent)
@@ -1320,13 +1338,6 @@ proc drawChilds(v: var Widget) =
         elif child of ListBox:
             var lb = ListBox(child)
             drawListBox(lb)
-
-
-proc drawViews*() =
-    for v in views.mitems:
-        if v.visible:
-            drawOuterFrame(v)
-            drawChilds(v)
 
 
 proc enterEditLoop*() =
