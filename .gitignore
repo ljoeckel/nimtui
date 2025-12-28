@@ -4,3 +4,4 @@ htmldocs/
 messages.log
 nimtui/examples/formeditor
 nimtui/examples/globaleditor
+nimtui/examples/rowlayout

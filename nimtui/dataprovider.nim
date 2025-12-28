@@ -10,6 +10,7 @@ proc getProviderData(page: int, pagesize: int, data: seq[string]): (seq[string],
     var lower = page*pagesize
     if lower >= data.len: return
     var upper = lower + pagesize
+    if upper <= 1: return
     if upper > data.len: upper = data.len
     elif data.len < upper: upper = data.len
     let more = upper < data.len
