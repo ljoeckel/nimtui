@@ -389,7 +389,6 @@ proc selectButton*(w: Widget) =
         w.selected = true
 
 proc drawBox(v: Widget) =
-    #log(fmt"drawBox v.id:{v.id} textstyle:{v.textstyle}")
     let x = v.x
     let x2 = x + v.width
     let y2 = v.y + v.height
@@ -403,12 +402,8 @@ proc drawBox(v: Widget) =
 
 
 proc calculateRow(v: Widget) =
-    #log(fmt"   calculateRow v.id:{v.id}")
     let row = Row(v.parent)
     if row.childs.len == 0: return
-
-    let width = row.width
-    let height = row.height
 
     func calcWidth(width: int, p: float): int =
        result = round((width.float / 100.0 * p)).int
@@ -427,20 +422,18 @@ proc calculateRow(v: Widget) =
                     let width = calcWidth(row.width, percents[i])
                     inc(posx, width)
                     #inc(posx, row.x + calcWidth(percents[i]) - row.frame*2 - c.frame )
-                v.x = posx #- row.frame*2 - c.frame
-                v.y = row.y
-                v.height = row.height - v.frame
+                v.x = posx - v.frame
+                v.y = row.y - v.frame
+                v.height = row.height - v.frame*2
                 break
 
 
     case row.layout
     of NONE:
-        log("426")
         if row.expand:
             row.width = row.parent.width - row.parent.frame*2
             row.x = row.parent.x + row.parent.frame*1
         if row.width == 0: # 1.pass calculate Row width
-            log("  431")
             var rwidth = row.frame + row.parent.frame
             for pos, c in row.childs:
                 c.x = rwidth
@@ -455,8 +448,6 @@ proc calculateRow(v: Widget) =
             for i in 0..<row.childs.len:
                 row.childs[i].x = i*ewidth + i*row.bound + 1
         else:
-            log("  446")
-            log(fmt"row.parent.x:{row.parent.x} row.parent.frame:{row.parent.frame}")
             var hx = row.parent.x + row.parent.frame
             # Add child by child
             for c in row.childs:
@@ -465,7 +456,6 @@ proc calculateRow(v: Widget) =
                     c.y = c.parent.y
                 elif c.y > c.parent.y + c.height:
                     c.y = c.parent.y + c.parent.height - 1 # Limit y to parent dimensions
-                log(fmt"c.id:{c.id} c.x:{c.x} c.y:{c.y}")
                 if c of Label: inc(hx, c.name.len)
                 elif c of TextField: inc(hx, c.name.len + TextField(c).len)
                 elif c of Button: inc(hx, c.name.len + c.frame)
@@ -582,7 +572,6 @@ proc add*(parent: Widget, w: Widget) =
     w.parent = parent
     parent.childs.add(w)
     calculateXY(w)
-    #log(fmt"add parent.id:{parent.id} w.id:{w.id}")
 
 
 proc getFocus*(): Widget =
@@ -877,6 +866,8 @@ proc processTextField*(v: var Widget, t: var TextField) =
 
 
 proc lineSelect*(lb: var ListBox) =
+    if lb.lines.len == 0: return 
+
     lb.mouseX = 0
     if lb.mouseY >= 0 and lb.mouseY < lb.height:
         if lb.mouseY >= lb.lines.len: lb.mouseY = lb.lines.len - 1
@@ -1133,19 +1124,6 @@ proc drawFrame*(v: Widget, bxch: array[6, string]) =
 proc drawOuterFrame*(v: var Widget) =
     drawFrame(v, BOX_CHARS_FRAME)
 
-# proc drawBox(v: Widget) =
-#     log(fmt"drawBox v.id:{v.id} textstyle:{v.textstyle}")
-#     let x = v.x
-#     let x2 = x + v.width
-#     let y2 = v.y + v.height
-#     var (bg, fg, charstyle) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
-#     if modal and not v.modal:
-#         bg = MODAL.bg
-#         fg = MODAL.fg
-#         charstyle = MODAL.style
-#     drawRectangle(x, v.y, x2, y2, bg, fg, v.ch, charstyle) 
-
-
 
 proc editTextField*(v: Widget) =
     # Is a textfield selected?
@@ -1280,13 +1258,11 @@ proc drawRow(row: Row) =
         row.x = parent.x + parent.frame
         if row.width == 0:
             row.width = parent.width - parent.frame*2
-        log(fmt"parent.x:{parent.x}, parent.frame:{parent.frame} row.x:{row.x} row.width:{row.width}")
     if row.y == 0:
         row.y = parent.y + parent.frame
         if row.height == 0:
             row.height = parent.height - parent.frame*2
 
-    #log(fmt"drawRow id:{row.id} layout:{row.layout}")
     let (width, height) = (row.parent.width, row.parent.height)
     if row.layout != NONE: # dimensions not known yet (paint later)
         row.width = width - parent.frame*2

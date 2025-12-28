@@ -35,7 +35,7 @@ if isMainModule:
     var globalsProvider = YDBGlobals
 
     form = View(id:"form", name:"Globals-Viewer", frame:1, width:width, height:height)
-    row = Row(id:"row", layout:H2_30, textstyle:DEBUG)
+    row = Row(id:"row", layout:H2_30)
     row.add(ListBox(id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1))
     row.add(ListBox(id:"global", name:"Global", provider:YDBGlobal, frame:1))
     form.add(row)
