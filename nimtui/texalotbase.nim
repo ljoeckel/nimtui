@@ -121,8 +121,8 @@ type
 
     Widget* = ref object of RootObj
         parent* {.cursor.}: Widget
-        x*: int = 0
-        y*: int = 0
+        x*: int
+        y*: int
         width*: int
         maxwidth*: int
         height*: int
@@ -155,7 +155,7 @@ type
         page*: int
         # gui
         ch*: string = " "
-        textStyle*: TextStyle = DEFAULT
+        textstyle*: TextStyle = DEFAULT
         layout*: Layout = NONE
         
     View* = ref object of Widget
@@ -193,6 +193,8 @@ type
 proc drawOuterFrame*(v: var Widget)
 proc drawChilds(v: var Widget)
 proc recalculateViews()
+proc setFocus*(view: Widget)
+
 
 var
     views*: seq[Widget]
@@ -232,6 +234,8 @@ macro defineSignal*(name: untyped; T: typed): untyped =
       for cb in `handlersName`:
         cb(value)
 
+# -------------------------------------------------
+
 proc drawViews*() =
     for v in views.mitems:
         if v.visible:
@@ -253,10 +257,10 @@ proc findView*(id: string): Widget =
             return v
     nil 
 
+
 proc isModal*(): bool =
     for v in views:
         if v.modal: return true
-
 
 
 proc lineDown*(lb: var ListBox) =
@@ -376,17 +380,15 @@ proc collectChilds(v: Widget, t: type): (seq[t], int) =
 proc collectChilds(v: Widget): (seq[Widget], int) =
     collectChilds(v, Widget)
 
-proc deselectButton(v: Widget) =
+proc deselectButtons(v: Widget) =
     var (buttons, _) = collectChilds(v, Button)
     if buttons.len > 1: # dont flicker a single button
         for child in buttons:
-            child.selected = false
+            if child.selected: child.selected = false
 
 proc selectButton*(w: Widget) =
-    for child in w.parent.childs:
-        if child of Button: child.selected = false
-    if w of Button:
-        w.selected = true
+    deselectButtons(w.parent)
+    w.selected = true
 
 proc drawBox(v: Widget) =
     let x = v.x
@@ -402,7 +404,7 @@ proc drawBox(v: Widget) =
 
 
 proc calculateRow(v: Widget) =
-    let row = Row(v.parent)
+    let row: Row = Row(v.parent)
     if row.childs.len == 0: return
 
     func calcWidth(width: int, p: float): int =
@@ -561,8 +563,8 @@ proc add*(parent: Widget, w: Widget) =
     #if w of Row and w.layout == Layout.NONE and (w.width == 0 or w.height == 0):
     #    raise newException(ValueError, "'Row' must have width & height or a layout")
 
+    # check for duplicate id
     for child in parent.childs:
-        # check for duplicate id
         if child.id == w.id: raise newException(ValueError, "Duplicate id '" & child.id & "'")
 
     # check button for x,y / alignment
@@ -937,10 +939,14 @@ proc updateFocus*() =
     if texalotEvent of MouseEvent:
         let ev = MouseEvent(texalotEvent)
         if ev.key == EVENT_MOUSE_MOVE:
-            deselectButton(v)
+            deselectButtons(v)
             let w = findChild(v, ev)
-            if w != nil and w of Button:
-                selectButton(w)
+            if w != nil:
+                if w of Button:
+                    selectButton(w)
+                else:
+                    selectChild(w)
+
         elif ev.key == EVENT_MOUSE_RELEASE:
             v.updateField()
             if modal and not v.modal: return # ignore click events on nonmodal views
@@ -1121,6 +1127,21 @@ proc drawFrame*(v: Widget, bxch: array[6, string]) =
             drawText(bxch[3], x2-1, y, bg, fg, charstyle)
 
 
+proc getTextstyle(w: Widget, appTextstyle: TextStyle): TextStyle =
+    result = appTextstyle
+    if not w.enabled: result = FAINT
+    if modal and w.parent.modal == false: result = MODAL
+
+
+proc getTextstyle(w: Widget): TextStyle =
+    if w.textstyle != DEFAULT:
+        result = w.textstyle
+    elif w.parent != nil:
+        result = getTextstyle(w, w.parent.textstyle)
+    else:
+        result = getTextstyle(w, DEFAULT)
+
+
 proc drawOuterFrame*(v: var Widget) =
     drawFrame(v, BOX_CHARS_FRAME)
 
@@ -1129,7 +1150,6 @@ proc editTextField*(v: Widget) =
     # Is a textfield selected?
     if v.focus and v.editChild != nil and v.editChild of TextField and v.editChild.selected:
         let txt = TextField(v.editChild)
-        #let (x,y) = offset(v, txt.x, txt.y)
         let (x,y) = offset(v, txt)
         # display field for editing
         var cursorStyle = if v.insert: FIELD_FOCUS_INSERT else: FIELD_FOCUS
@@ -1148,24 +1168,18 @@ proc editTextField*(v: Widget) =
 
 
 proc drawLabel*(lbl: Label, style: TextStyle) =
-    #let (x,y) = offset(lbl)
-    var stl = if lbl.textstyle != DEFAULT: lbl.textstyle else: style
-    if modal and lbl.parent.modal == false: stl = MODAL
-    drawText(lbl.name, lbl.x, lbl.y, stl)
+    let (x,y) = offset(lbl)
+    drawText(lbl.name, x, y, getTextstyle(lbl))
 
 
 proc drawTextField(t: TextField, style: TextStyle) =
-    #let (x,y) = offset(t.parent, t.x, t.y)
     let (x,y) = offset(t.parent, t)
-    var stl = if t.textstyle != DEFAULT: t.textstyle else: style
-    if modal and t.parent.modal == false: stl = MODAL
+    var stl = getTextstyle(t, style)
     drawText(t.name, x, y, stl)
-    stl = FAINT
-    if modal and t.parent.modal == false: stl = MODAL
+    stl = getTextstyle(t, FAINT)
     if t.editable:
         drawText(repeat(FILLER, t.len), x + t.name.toRunes().len, y, stl)
-    stl = TEXT_VALUE
-    if modal and t.parent.modal == false: stl = MODAL
+    stl = getTextstyle(t, TEXT_VALUE)
     drawText(t.value, x + t.name.len, y, stl)
     if t.editable: editTextField(t.parent)
 
@@ -1177,7 +1191,6 @@ proc drawButton*(btn: Button) =
         (x,y) = offset(btn)
     else:
         (x,y) = (btn.x, btn.y)
-    #let (x, y) = (btn.x, btn.y)
     let x2 = x + btn.name.len
     let width = btn.name.len
 
@@ -1191,26 +1204,17 @@ proc drawButton*(btn: Button) =
     if btn.frame > 0:
         drawText("[", x, y, styleTxt)
         drawText("]", x+width+1, y, styleTxt)
-        # # Draw box around
-        # drawText(bxch[0] & repeat(bxch[2], width) & bxch[1], x, y, FAINT)
-        # drawText(bxch[4] & repeat(bxch[2], width) & bxch[5], x, y+2, FAINT)
-        # drawText(bxch[3], x, y+1, FAINT)
-        # drawText(bxch[3], x2+1, y+1, FAINT)
 
     # Draw Text
-    #drawText(btn.name, x+btn.frame, y+btn.frame, styleTxt)
     drawText(btn.name, x+btn.frame, y, styleTxt)
 
 
 proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
-    let stl = if lb.textstyle != DEFAULT: lb.textstyle else: style
+    var stl = getTextstyle(lb, style)
     let bxch = BTN_BOX_CHARS_FRAME
     let (x, y) = offset(lb.parent, lb)
     let x2 = x + lb.width
     let y2 = y + lb.height + lb.frame
-    var style = if not lb.enabled: FAINT else: style
-    if modal and lb.parent.modal == false:
-        style = MODAL
 
     if lb.frame > 0:
         # Draw box around
@@ -1234,7 +1238,7 @@ proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
         var lineLength = max(lb.mouseX, (min(txt.len, lb.mouseX + lb.width - 1)))
         if lineLength > txt.len - 1: lineLength = txt.len - 1
         if posx < lineLength:
-            drawText(txt[posx..lineLength], x+lb.frame, y+lb.frame+line, style)
+            drawText(txt[posx..lineLength], x+lb.frame, y+lb.frame+line, stl)
     if lb.lines.len > 0:
         var linestyle = if lb.selected: FIELD_FOCUS else: TEXT
         if modal and lb.parent.modal == false:
@@ -1354,4 +1358,3 @@ proc enterEditLoop*() =
             v.action.onRepaint(v)
 
         texalotRender()
-

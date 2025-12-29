@@ -1,8 +1,4 @@
-import std/strformat
-import times
 import nimtui
-
-
 
 
 if isMainModule:
@@ -21,11 +17,12 @@ if isMainModule:
             clocklbl.name = $now()
             drawLabel(clocklbl, TEXT)
 
-    form = View(id:"form1", name:"RowTest1", frame:1, textstyle:BTN_FOCUS, height:getTerminalHeight(), action:viewAction(form))
-    row = Row(id:"row", name:"Row1", layout:H3_33, textstyle:DEBUG)
+    form = View(id:"form1", name:"RowTest1", frame:1, height:getTerminalHeight(), action:viewAction(form))
+    row = Row(id:"row", name:"Row1", textstyle:TEXT_MOVING)
     row.add(Label(id:"lbl1", name:"12345678901234567890"))
-    row.add(Label(id:"lbl2", name:"abcdefghijabcdefghij"))
+    row.add(Label(id:"lbl2", name:"abcdefghijabcdefghij", textstyle:ALARM))
     row.add(Label(id:"lbl3", name:"12345678901234567890"))
+    row.add(TextField(id:"txt1", name:"Textfeld:", len:20))
     form.add(row)
     addView(form)
 
