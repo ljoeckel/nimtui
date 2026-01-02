@@ -91,17 +91,8 @@ type
 
     Layout* = enum 
         NONE = -1,
-        H2_10 = 0,
-        H2_20 = 1,
-        H2_25 = 2,
-        H2_30 = 3,
-        H2_40 = 4,
-        H2_50 = 5,
-        H2_75 = 6,
-        H3_33 = 7,
-        H3_66 = 8,
-        H4_25 = 9,
-        H5_20 = 10
+        H2_10, H2_20, H2_25, H2_30, H2_40, H2_50, H2_75, H3_33, H3_66, H4_25, H5_20
+        V2_10, V2_20, V2_25, V2_30, V2_40, V2_50, V2_75, V3_33, V3_66, V4_25, V5_20
 
     DPCallback* = proc(provider: var DataProvider, page: int, pagesize: int): (seq[string], bool)
     DataProvider* = object of RootObj
@@ -157,15 +148,14 @@ type
         ch*: string = " "
         textstyle*: TextStyle = DEFAULT
         layout*: Layout = NONE
+        bound*: int = 1
+        expand*: bool
         
     View* = ref object of Widget
     Dialog* = ref object of Widget
-    Row* = ref object of Widget
-        bound*: int = 1
-        expand*: bool
-    Col* = ref object of Widget
-        bound*: int = 1
-        expand*: bool
+    Container = ref object of Widget
+    Row* = ref object of Container
+    Col* = ref object of Container
 
     DataType = enum 
         AlphaNumeric
@@ -235,6 +225,17 @@ macro defineSignal*(name: untyped; T: typed): untyped =
         cb(value)
 
 # -------------------------------------------------
+func getWidgetWidth(w: Widget): int =
+    if w of Label: inc(result, w.name.len)
+    elif w of TextField: inc(result, w.name.len + TextField(w).len)
+    else: inc(result, w.width)
+
+func getWidgetHeight(w: Widget): int =
+    if w of Label: inc(result)
+    elif w of TextField: inc(result)
+    elif w of Label: inc(result)
+    elif w of ListBox: inc(result, 5)
+    else: inc(result)
 
 proc drawViews*() =
     for v in views.mitems:
@@ -326,11 +327,11 @@ func offset(v: Widget, x: int, y: int): (int, int) =
     result = (v.x + x + v.frame, v.y + y + v.frame)
 
 proc mouseToOffset*(v: Widget, x,y: int): (int, int) =
-    let refw = if v of ListBox and v.parent of Row: v.parent else: v
+    let refw = if v of ListBox and v.parent of Container: v.parent else: v
     result = (x - refw.x - refw.frame, y - refw.y - v.frame)
 
 func mouseToOffset*(v: Widget, me: MouseEvent): (int, int) =
-    let refw = if v of ListBox and v.parent of Row: v.parent else: v
+    let refw = if v of ListBox and v.parent of Container: v.parent else: v
     result = (me.x - refw.x - refw.frame, me.y - refw.y - v.frame)
 
 
@@ -365,7 +366,7 @@ proc collectChilds(v: Widget, t: type): (seq[t], int) =
         collection: seq[t]
         selected: int
     for child in v.childs:
-        if child of Row:
+        if child of Container:
             for sc in child.childs:
                 if sc of t:
                     collection.add(t(sc))
@@ -414,18 +415,14 @@ proc calculateRow(v: Widget) =
         if row.childs.len > percents.len: raise newException(ValueError, "Too many children in row for this layout (" & $row.layout & ")")
         for pos, c in row.childs:
             if c.id == v.id:
-                if pos == 0:
-                    v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
-                else:
-                    v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
+                v.width = calcWidth(row.width, percents[pos]) - row.frame*2 - c.frame*2
                 # Recalculate x-position
                 var posx = row.x
                 for i in 0..<pos:
                     let width = calcWidth(row.width, percents[i])
                     inc(posx, width)
-                    #inc(posx, row.x + calcWidth(percents[i]) - row.frame*2 - c.frame )
                 v.x = posx - v.frame
-                v.y = row.y - v.frame
+                v.y = row.y + row.frame - v.frame
                 v.height = row.height - v.frame*2
                 break
 
@@ -439,10 +436,7 @@ proc calculateRow(v: Widget) =
             var rwidth = row.frame + row.parent.frame
             for pos, c in row.childs:
                 c.x = rwidth
-                if c of Label: inc(rwidth, c.name.len)
-                elif c of TextField: inc(rwidth, c.name.len + TextField(c).len)
-                else: inc(rwidth, c.width)
-                inc(rwidth, row.bound)
+                inc(rwidth, getWidgetWidth(c) + row.bound)
             row.width = rwidth
         if row.expand:
             # 2. pass Place evenly childs within Row
@@ -458,40 +452,74 @@ proc calculateRow(v: Widget) =
                     c.y = c.parent.y
                 elif c.y > c.parent.y + c.height:
                     c.y = c.parent.y + c.parent.height - 1 # Limit y to parent dimensions
-                if c of Label: inc(hx, c.name.len)
-                elif c of TextField: inc(hx, c.name.len + TextField(c).len)
-                elif c of Button: inc(hx, c.name.len + c.frame)
-                else: inc(hx, c.width)
-                inc(hx, row.bound)
+                inc(hx, getWidgetWidth(c) + row.bound)
                 if c.height == 0: c.height = row.height
             
-    of H2_10:
-        setWidth(@[10.0, 90.0])
-    of H2_20:
-        setWidth(@[20.0, 80.0])
-    of H2_25:
-        setWidth(@[25.0, 75.0])
-    of H2_30:
-        setWidth(@[30.0, 70.0])
-    of H2_40:
-        setWidth(@[40.0, 60.0])
-    of H2_50:
-        setWidth(@[50.0, 50.0])
-    of H2_75:
-        setWidth(@[75.0, 25.0])
-    of H3_33:
-        setWidth(@[33.0, 33.0, 33.0])
-    of H3_66:
-        setWidth(@[17.0, 17.0, 66.0])
-    of H4_25:
-        setWidth(@[25.0, 25.0, 25.0, 25.0])
-    of H5_20:
-        setWidth(@[20.0, 20.0, 20.0, 20.0, 20.0])        
+    of H2_10: setWidth(@[10.0, 90.0])
+    of H2_20: setWidth(@[20.0, 80.0])
+    of H2_25: setWidth(@[25.0, 75.0])
+    of H2_30: setWidth(@[30.0, 70.0])
+    of H2_40: setWidth(@[40.0, 60.0])
+    of H2_50: setWidth(@[50.0, 50.0])
+    of H2_75: setWidth(@[75.0, 25.0])
+    of H3_33: setWidth(@[33.0, 33.0, 33.0])
+    of H3_66: setWidth(@[17.0, 17.0, 66.0])
+    of H4_25: setWidth(@[25.0, 25.0, 25.0, 25.0])
+    of H5_20: setWidth(@[20.0, 20.0, 20.0, 20.0, 20.0])       
+    else: discard 
+
+
+proc calculateCol(v: Widget) =
+    let parent = v.parent
+    let col: Col = Col(parent)
+    if col.childs.len == 0: return
+
+    func calcHeight(width: int, p: float): int =
+       result = round((width.float / 100.0 * p)).int
+
+    proc setHeight(percents: seq[float]) =
+        if col.childs.len > percents.len: raise newException(ValueError, "Too many children in row for this layout (" & $col.layout & ")")
+        for pos, c in col.childs:
+            if c.id == v.id:
+                v.height = calcHeight(col.height, percents[pos]) - col.frame*2 - c.frame*2
+                # Recalculate x-position
+                var posy = col.y
+                for i in 0..<pos:
+                    let height = calcHeight(col.height, percents[i])
+                    inc(posy, height)
+                v.y = posy - v.frame
+                v.x = col.x + col.frame - v.frame
+                v.height = col.height - v.frame*2
+                break
+
+
+    case col.layout
+    of NONE:
+        var hx = parent.x + parent.frame
+        var hy = parent.y + parent.frame
+        # Add child by child
+        for c in col.childs:
+            c.x = hx
+            c.y = hy
+            inc(hy, getWidgetHeight(c) + col.bound)
+    of V2_10: setHeight(@[10.0, 90.0])
+    of V2_20: setHeight(@[20.0, 80.0])
+    of V2_25: setHeight(@[25.0, 75.0])
+    of V2_30: setHeight(@[30.0, 70.0])
+    of V2_40: setHeight(@[40.0, 60.0])
+    of V2_50: setHeight(@[50.0, 50.0])
+    of V2_75: setHeight(@[75.0, 25.0])
+    of V3_33: setHeight(@[33.0, 33.0, 33.0])
+    of V3_66: setHeight(@[17.0, 17.0, 66.0])
+    of V4_25: setHeight(@[25.0, 25.0, 25.0, 25.0])
+    of V5_20: setHeight(@[20.0, 20.0, 20.0, 20.0, 20.0])      
+    else: discard  
 
 
 proc calculateXY(w: Widget) =
     var x,y: int
     let parent = w.parent
+    log(fmt"calculateXY parent:{w.parent.id} w:{w.id}")
 
     proc collectChilds(childs: seq[Widget], align: Align): (seq[Widget], int) =
         # calculate width of all elements
@@ -500,11 +528,7 @@ proc calculateXY(w: Widget) =
         for c in childs:
             if c.align == align:
                 achilds.add(c)
-                if c of Label: inc(totalLen, c.name.len)
-                elif c of Button: inc(totalLen, c.name.len)
-                elif c of TextField: inc(totalLen, c.name.len + TextField(c).len)
-                else: inc(totalLen, c.width)
-                inc(totalLen, c.frame*2)
+                inc(totalLen, getWidgetWidth(c) + c.frame*2)
         inc(totalLen, achilds.len-1) # separator spacing
         return (achilds, totalLen)                
 
@@ -559,7 +583,9 @@ proc calculateXY(w: Widget) =
 
 
 proc add*(parent: Widget, w: Widget) =
-    if w != nil and w.id.isEmptyOrWhitespace: raise newException(ValueError, "Must have a id")
+    if parent == nil: raise newException(ValueError, "Parent Widget is nil!")
+    if w == nil: raise newException(ValueError, "Widget to add is nil!")
+    if w.id.isEmptyOrWhitespace: raise newException(ValueError, "Must have a id")
     #if w of Row and w.layout == Layout.NONE and (w.width == 0 or w.height == 0):
     #    raise newException(ValueError, "'Row' must have width & height or a layout")
 
@@ -573,7 +599,11 @@ proc add*(parent: Widget, w: Widget) =
 
     w.parent = parent
     parent.childs.add(w)
-    calculateXY(w)
+    if w of Container:
+        for child in w.childs:
+            calculateXY(child)
+    else:
+        calculateXY(w)
 
 
 proc getFocus*(): Widget =
@@ -613,7 +643,7 @@ proc findChild*(v: Widget, id: string): Widget =
 proc findChild*(v: Widget, x, y: int): Widget =
     var (collected, _) = collectChilds(v)
     for child in collected:
-        let refw = if child.parent of Row: child.parent else: child
+        let refw = if child.parent of Container: child.parent else: child
         let framey = if child.frame > 0: child.frame + 1 else: 0
         var ox,oy: int
         if child.align == NONE:
@@ -641,7 +671,7 @@ proc findChild*(v: Widget, x, y: int): Widget =
             if ox >= child.x and ox <= child.x + child.width:
                 if oy >= refw.y and oy <= refw.y + child.height:
                     result = child
-        elif child of Row:
+        elif child of Container:
             if ox >= child.x and ox <= child.x + child.width:
                 if oy >= child.y and oy <= child.y + child.height: 
                     result = findChild(child, x, y) # search in the Row
@@ -737,7 +767,7 @@ proc getValue*(v: Widget, id: string): string =
                 return TextField(child).value
             if child of ListBox:
                 return ListBox(child).provider.selected
-        if child of Row:
+        if child of Container:
             return getValue(child, id)
 
     echo "No child with id ", id, " found!"
@@ -913,7 +943,7 @@ proc processListBox(v: var Widget, lb: var ListBox) =
         let ev = MouseEvent(texalotEvent)
         case ev.key
         of EVENT_MOUSE_RELEASE:
-            let refw = if lb.parent of Row: lb.parent else: lb
+            let refw = if lb.parent of Container: lb.parent else: lb
             let (_, y) = mouseToOffset(refw, ev)
             lb.mouseY = max(y - 1, 0)
             lineSelect(lb)
@@ -1017,7 +1047,7 @@ proc recalculateViews() =
 
         # Trigger recalculate Rows
         for child in view.childs:
-            if child of Row and child.layout != NONE:
+            if child.layout != NONE and child of Container:
                 child.y = 0
                 child.height = 0
 
@@ -1209,7 +1239,7 @@ proc drawButton*(btn: Button) =
     drawText(btn.name, x+btn.frame, y, styleTxt)
 
 
-proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
+proc drawListBox(lb: ListBox, style: TextStyle = TEXT) =
     var stl = getTextstyle(lb, style)
     let bxch = BTN_BOX_CHARS_FRAME
     let (x, y) = offset(lb.parent, lb)
@@ -1255,36 +1285,61 @@ proc drawListBox(lb: var ListBox, style: TextStyle = TEXT) =
     if lb.more: 
         drawText("\u2193", x + lb.width, y2, style)
 
+
 proc drawRow(row: Row) =
     let parent = row.parent
     # place Row inside parent bounds
     if row.x == 0:
         row.x = parent.x + parent.frame
-        if row.width == 0:
-            row.width = parent.width - parent.frame*2
+        if row.width == 0: row.width = parent.width - parent.frame*2
     if row.y == 0:
         row.y = parent.y + parent.frame
-        if row.height == 0:
-            row.height = parent.height - parent.frame*2
+        if row.height == 0: row.height = parent.height - parent.frame*2
 
     let (width, height) = (row.parent.width, row.parent.height)
     if row.layout != NONE: # dimensions not known yet (paint later)
         row.width = width - parent.frame*2
         row.x = parent.x + parent.frame
-        drawBox(row)
+
     drawBox(row)
 
     for child in row.childs:
         calculateRow(child)
-        if child of TextField:
-            drawTextField(TextField(child), row.textstyle)
-        elif child of Button:
-            drawButton(Button(child))
-        elif child of ListBox:
-            var lb = ListBox(child)
-            drawListBox(lb, row.textstyle)
-        elif child of Label:
-            drawLabel(Label(child), row.textstyle)
+        if child of TextField: drawTextField(TextField(child), row.textstyle)
+        elif child of Button:  drawButton(Button(child))
+        elif child of ListBox: drawListBox(ListBox(child), row.textstyle)
+        elif child of Label: drawLabel(Label(child), row.textstyle)
+        elif child of Container:
+            var cc = child
+            drawChilds(cc)        
+        else: discard
+
+
+proc drawCol(col: Col) =
+    let parent = col.parent
+    # place Row inside parent bounds
+    if col.x == 0:
+        col.x = parent.x + parent.frame
+        if col.width == 0: col.width = parent.width - parent.frame*2
+    if col.y == 0:
+        col.y = parent.y + parent.frame
+        if col.height == 0: col.height = parent.height - parent.frame*2
+
+    if col.layout != NONE: # dimensions not known yet (paint later)
+        col.width = parent.width - parent.frame*2
+        col.x = parent.x + parent.frame
+
+    drawBox(col)
+
+    for child in col.childs:
+        calculateCol(child)
+        if child of TextField: drawTextField(TextField(child), col.textstyle)
+        elif child of Button:  drawButton(Button(child))
+        elif child of ListBox: drawListBox(ListBox(child), col.textstyle)
+        elif child of Label:   drawLabel(Label(child), col.textstyle)
+        elif child of Container:
+            var cc = child
+            drawChilds(cc)
         else: discard
 
 
@@ -1307,17 +1362,12 @@ proc drawChilds(v: var Widget) =
         if modal and child.parent.modal == false:
             style = FAINT
 
-        if child of Row:
-            drawRow(Row(child))
-        elif child of TextField:
-            drawTextField(TextField(child), style)
-        elif child of Label:
-            drawLabel(Label(child), style)
-        elif child of Button:
-            drawButton(Button(child))
-        elif child of ListBox:
-            var lb = ListBox(child)
-            drawListBox(lb)
+        if child of Row:         drawRow(Row(child))
+        elif child of Col:       drawCol(Col(child))
+        elif child of TextField: drawTextField(TextField(child), style)
+        elif child of Label:     drawLabel(Label(child), style)
+        elif child of Button:    drawButton(Button(child))
+        elif child of ListBox:   drawListBox(ListBox(child))
 
 
 proc enterEditLoop*() =
