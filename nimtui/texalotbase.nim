@@ -101,7 +101,7 @@ type
         selectedBefore*: string
         callback*: DPCallback
 
-    Action* = ref object
+    EventHandler* = ref object
         view*: Widget
         isEnabled*: proc(): bool
         onFocus*: proc(v: Widget)
@@ -125,7 +125,7 @@ type
         id*: string
         name*: string
         childs*: seq[Widget]
-        action*: Action
+        handler*: EventHandler
         enabled*: bool = true
         editable*: bool = true
         focus*: bool
@@ -391,10 +391,9 @@ proc selectButton*(w: Widget) =
     deselectButtons(w.parent)
     w.selected = true
 
-proc drawBox(v: Widget) =
-    let x = v.x
+proc drawBox(v: Widget, x,y:int) =
     let x2 = x + v.width
-    let y2 = v.y + v.height
+    let y2 = y + v.height
     var (bg, fg, charstyle) = (v.textstyle.bg, v.textstyle.fg, v.textstyle.style)
     if modal and not v.modal:
         bg = MODAL.bg
@@ -402,6 +401,8 @@ proc drawBox(v: Widget) =
         charstyle = MODAL.style
     drawRectangle(x, v.y, x2, y2, bg, fg, v.ch, charstyle) 
 
+proc drawBox(v: Widget) =
+    drawBox(v, v.x, v.y)
 
 
 proc calculateRow(v: Widget) =
@@ -686,8 +687,8 @@ proc findChild*(v: Widget, e: MouseEvent): Widget =
 
 
 proc updateField(v: Widget) =
-    if v.action != nil and v.action.onUpdate != nil:
-        v.action.onUpdate(v)
+    if v.handler != nil and v.handler.onUpdate != nil:
+        v.handler.onUpdate(v)
 
 
 proc setEditChild*(w: Widget) = 
@@ -777,9 +778,9 @@ proc processButton*(btn: var Button) =
     if texalotEvent of KeyEvent:
         let ke = KeyEvent(texalotEvent)        
         if ke.key == EVENT_KEY_ENTER:
-            if btn.action != nil and btn.action.onAction != nil:
+            if btn.handler != nil and btn.handler.onAction != nil:
                 btn.selected = false
-                btn.action.onAction(btn.action.view)
+                btn.handler.onAction(btn.handler.view)
         elif ke.key == EVENT_KEY_TAB:
             btn.parent.nextField()
     elif texalotEvent of MouseEvent:
@@ -787,12 +788,12 @@ proc processButton*(btn: var Button) =
         if ev.key == EVENT_MOUSE_RELEASE:
             btn.parent.updateField()
             if modal and not btn.parent.modal: return # ignore click events on nonmodal views
-            let enabled = if btn.action != nil and btn.action.isEnabled != nil: btn.action.isEnabled() else: true
+            let enabled = if btn.handler != nil and btn.handler.isEnabled != nil: btn.handler.isEnabled() else: true
             if enabled:
-                if btn.action != nil and btn.action.onAction != nil:
-                    if btn.action.view != nil:
+                if btn.handler != nil and btn.handler.onAction != nil:
+                    if btn.handler.view != nil:
                         btn.selected = false
-                        btn.action.onAction(btn.action.view)
+                        btn.handler.onAction(btn.handler.view)
                     else:
                         raise newException(ValueError, "'view' field not set on Action")
 
@@ -962,8 +963,8 @@ proc updateFocus*() =
             break
     if v.isNil: return # no focused view found
     
-    if v.action != nil and v.action.onFocus != nil:
-        v.action.onFocus(v)
+    if v.handler != nil and v.handler.onFocus != nil:
+        v.handler.onFocus(v)
 
     # Check for MouseMove that changed focus of buttons only
     if texalotEvent of MouseEvent:
@@ -1224,7 +1225,7 @@ proc drawButton*(btn: Button) =
     let x2 = x + btn.name.len
     let width = btn.name.len
 
-    let enabled = if btn.action != nil and btn.action.isEnabled != nil: btn.action.isEnabled() else: true
+    let enabled = if btn.handler != nil and btn.handler.isEnabled != nil: btn.handler.isEnabled() else: true
     var style = if btn.textstyle != DEFAULT: btn.textstyle else: BTN_TEXT
     if not enabled: style = FAINT
     if modal and btn.parent.modal == false:
@@ -1286,60 +1287,32 @@ proc drawListBox(lb: ListBox, style: TextStyle = TEXT) =
         drawText("\u2193", x + lb.width, y2, style)
 
 
-proc drawRow(row: Row) =
-    let parent = row.parent
-    # place Row inside parent bounds
-    if row.x == 0:
-        row.x = parent.x + parent.frame
-        if row.width == 0: row.width = parent.width - parent.frame*2
-    if row.y == 0:
-        row.y = parent.y + parent.frame
-        if row.height == 0: row.height = parent.height - parent.frame*2
+proc drawContainer(c: Container) =
+    let parent = c.parent
+    # place Container inside parent bounds
+    if c.x == 0:
+        c.x = parent.x + parent.frame
+        if c.width == 0: c.width = parent.width - parent.frame*2
+    if c.y == 0:
+        c.y = parent.y + parent.frame
+        if c.height == 0: c.height = parent.height - parent.frame*2
 
-    let (width, height) = (row.parent.width, row.parent.height)
-    if row.layout != NONE: # dimensions not known yet (paint later)
-        row.width = width - parent.frame*2
-        row.x = parent.x + parent.frame
+    if c.layout != NONE: # dimensions not known yet (paint later)
+        c.width = parent.width - parent.frame*2
+        c.x = parent.x + parent.frame
 
-    drawBox(row)
+    drawBox(c)
 
-    for child in row.childs:
-        calculateRow(child)
-        if child of TextField: drawTextField(TextField(child), row.textstyle)
-        elif child of Button:  drawButton(Button(child))
-        elif child of ListBox: drawListBox(ListBox(child), row.textstyle)
-        elif child of Label: drawLabel(Label(child), row.textstyle)
-        elif child of Container:
+    let calc = if c of Row: calculateRow else: calculateCol
+    for child in c.childs:
+        calc(child)
+        if child of Container:
             var cc = child
             drawChilds(cc)        
-        else: discard
-
-
-proc drawCol(col: Col) =
-    let parent = col.parent
-    # place Row inside parent bounds
-    if col.x == 0:
-        col.x = parent.x + parent.frame
-        if col.width == 0: col.width = parent.width - parent.frame*2
-    if col.y == 0:
-        col.y = parent.y + parent.frame
-        if col.height == 0: col.height = parent.height - parent.frame*2
-
-    if col.layout != NONE: # dimensions not known yet (paint later)
-        col.width = parent.width - parent.frame*2
-        col.x = parent.x + parent.frame
-
-    drawBox(col)
-
-    for child in col.childs:
-        calculateCol(child)
-        if child of TextField: drawTextField(TextField(child), col.textstyle)
+        elif child of TextField: drawTextField(TextField(child), c.textstyle)
         elif child of Button:  drawButton(Button(child))
-        elif child of ListBox: drawListBox(ListBox(child), col.textstyle)
-        elif child of Label:   drawLabel(Label(child), col.textstyle)
-        elif child of Container:
-            var cc = child
-            drawChilds(cc)
+        elif child of ListBox: drawListBox(ListBox(child), c.textstyle)
+        elif child of Label: drawLabel(Label(child), c.textstyle)
         else: discard
 
 
@@ -1362,8 +1335,7 @@ proc drawChilds(v: var Widget) =
         if modal and child.parent.modal == false:
             style = FAINT
 
-        if child of Row:         drawRow(Row(child))
-        elif child of Col:       drawCol(Col(child))
+        if child of Container:   drawContainer(Container(child))
         elif child of TextField: drawTextField(TextField(child), style)
         elif child of Label:     drawLabel(Label(child), style)
         elif child of Button:    drawButton(Button(child))
@@ -1404,7 +1376,7 @@ proc enterEditLoop*() =
         drawViews()
 
         # Paint from onRepaint() call       
-        if v.action != nil and v.action.onRepaint != nil:
-            v.action.onRepaint(v)
+        if v.handler != nil and v.handler.onRepaint != nil:
+            v.handler.onRepaint(v)
 
         texalotRender()

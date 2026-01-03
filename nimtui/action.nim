@@ -1,7 +1,7 @@
 import texalotbase
 
-proc QuitAction*(v: Widget): Action = 
-    result = Action(view: v)
+proc QuitAction*(v: Widget): EventHandler = 
+    result = EventHandler(view: v)
     result.onAction = proc(v: Widget) =
         onExit()
 

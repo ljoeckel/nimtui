@@ -34,14 +34,20 @@ if isMainModule:
     let height = getTerminalHeight()
     var globalsProvider = YDBGlobals
 
-    form = View(id:"form", name:"Globals-Viewer", frame:1, width:width, height:height)
+    proc viewAction(v: Widget): EventHandler = 
+        result = EventHandler(view: v)
+        result.onRepaint = proc(v: Widget) =
+            let clk = findChild(v, "clocklbl")
+            if clk != nil: clk.name = $now()
+
+    form = View(id:"form", name:"Globals-Viewer", frame:1, width:width, height:height, handler:viewAction(form))
     row = Row(id:"row", layout:H2_30)
     row.add(ListBox(id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1))
     row.add(ListBox(id:"global", name:"Global", provider:YDBGlobal, frame:1))
     form.add(row)
 
-    proc reloadAction(v: Widget): Action = 
-        result = Action(view: v)
+    proc reloadAction(v: Widget): EventHandler = 
+        result = EventHandler(view: v)
         result.onAction = proc(v: Widget) =
             var child = v.findChild("globals")
             if child != nil and child of ListBox:
@@ -50,25 +56,25 @@ if isMainModule:
                 child.mouseY = 0
                 selectChild(child)
 
-    proc killAction(v: Widget): Action = 
-        result = Action(view:v)
+    proc killAction(v: Widget): EventHandler = 
+        result = EventHandler(view:v)
 
         proc killGlobalVar() =
             let gbl = v.getValue("global")
             kill: @gbl
             var reload = v.findChild("reload")
             if reload != nil and reload of Button:
-                reload.action.onAction(form)
+                reload.handler.onAction(form)
 
         result.onAction = proc(v: Widget) =
             let gbl = v.getValue("global")
             YesNoDialog("Kill Global", fmt"Ok to kill global {gbl}?", killGlobalVar)
 
 
-    proc statsAction(v: Widget): Action = 
-        result = Action(view: v)
-        proc closeView(v: Widget): Action =
-            result = Action(view: v)
+    proc statsAction(v: Widget): EventHandler = 
+        result = EventHandler(view: v)
+        proc closeView(v: Widget): EventHandler =
+            result = EventHandler(view: v)
             result.onAction = proc(v: Widget) =
                 if findView(v.id) != nil: 
                     removeView(v.id)
@@ -92,7 +98,7 @@ if isMainModule:
                 statsdlg.add(TextField(id:"databytes", editable:false, x:1, y:4, name:"Data bytes  : ", len:12))
                 statsdlg.add(TextField(id:"datamax", editable:false, x:1, y:5,   name:"Max Datalen : ", len:12))
                 statsdlg.add(TextField(id:"processed", editable:false, x:1, y:6, name:"Duration    : ", len:8))
-                statsdlg.add(Button(id:"close", name:"Close", frame:1, align:BOT_RIGHT, action:closeView(statsdlg)))
+                statsdlg.add(Button(id:"close", name:"Close", frame:1, align:BOT_RIGHT, handler:closeView(statsdlg)))
                 addView(statsdlg)
                 setFocus(statsdlg, "close")
 
@@ -121,10 +127,12 @@ if isMainModule:
             setValue(statsdlg, "datamax", $stats.datamax)            
             setValue(statsdlg, "processed", $stats.processed & " " & stats.unit)
 
-    form.add(Button(frame:1, id:"kill", name:"Kill", align:TOP_RIGHT, action:killAction(form)))    
-    form.add(Button(frame:1, id:"reload", name:"Reload", align:TOP_RIGHT, action:reloadAction(form)))
-    form.add(Button(frame:1, id:"stats", name:"Stats", align:TOP_RIGHT, action:statsAction(form)))    
-    form.add(Button(frame:1, id:"quit", name:"Quit", align:TOP_RIGHT, action:QuitAction(form)))
+    form.add(Button(frame:1, id:"kill", name:"Kill", align:TOP_RIGHT, handler:killAction(form)))
+    form.add(Button(frame:1, id:"reload", name:"Reload", align:TOP_RIGHT, handler:reloadAction(form)))
+    form.add(Button(frame:1, id:"stats", name:"Stats", align:TOP_RIGHT, handler:statsAction(form)))    
+    form.add(Button(frame:1, id:"quit", name:"Quit", align:TOP_RIGHT, handler:QuitAction(form)))
+    let tm = $now()
+    form.add(Button(frame:1, id:"clocklbl", name:tm, align:TOP_RIGHT, textstyle:ALARM))
 
     addView(form)
     setFocus(form, "globals")
