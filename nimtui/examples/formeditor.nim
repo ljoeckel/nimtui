@@ -131,12 +131,12 @@ if isMainModule:
     let height = getTerminalHeight()
     let tw = 36
 
-    proc formActions(v: Widget): Action =
-        result = Action()
+    proc formEventHandlers(v: Widget): EventHandler =
+        result = EventHandler()
         result.onFocus = onFocusForm
 
-    proc paramActions(v: Widget): Action =
-        result = Action()
+    proc paramEventHandlers(v: Widget): EventHandler =
+        result = EventHandler()
         result.onUpdate = updateField
 
     const stringProviderCallback = proc(provider: var DataProvider, page: int, pagesize: int): (seq[string], bool) =
@@ -148,7 +148,7 @@ if isMainModule:
 
     block:
         # The Form View
-        form = View(id:"form", action:formActions(form), name:"FormEditor", frame:1, x:0, y:0, height:height, width:width-tw)
+        form = View(id:"form", handler:formEventHandlers(form), name:"FormEditor", frame:1, x:0, y:0, height:height, width:width-tw)
         form.add(TextField(id:"selgbl", name:"Selected Global:", x:0, y:0, len:20))
         var lb = ListBox(focus:true, id:"globals", name:"Globals", selectionChanged:onGlobalsSelectionChanged, provider:globalsProvider, frame:1, x:0, y:1, width:20, height:12)
         form.add(lb)
@@ -158,7 +158,7 @@ if isMainModule:
 
     block:
         # The Params View
-        param = View(id:"params", action:paramActions(param), name:"Field Params", frame:1, x:width-tw, y:0, height:height, width:tw)
+        param = View(id:"params", handler:paramEventHandlers(param), name:"Field Params", frame:1, x:width-tw, y:0, height:height, width:tw)
         param.add(TextField(id:"NAME", x:0, y:0, name:"Fieldname: ", len:20))
         param.add(TextField(id:"LEN", x:0, y:1, name:"      Len: ", len:3))
         param.add(TextField(id:"TYP", x:0, y:2, name:"      Typ: ", len:1))
@@ -166,8 +166,8 @@ if isMainModule:
         var lb = ListBox(focus:false, id:"lb", name:"ListBox", provider:stringProvider, frame:1, x:0, y:6, width:20, height:5)
         param.add(lb)
 
-    proc deleteAction(v: View): Action = 
-        result = Action(view: v)
+    proc deleteEventHandler(v: View): EventHandler = 
+        result = EventHandler(view: v)
         result.isEnabled = proc(): bool =
             getSelectedChild(v) != nil
         
@@ -179,8 +179,8 @@ if isMainModule:
             v.nextField()
             emitSelectionChanged(v.editChild)
 
-    proc showAction(v: View): Action = 
-        result = Action(view: v)
+    proc showEventHandler(v: View): EventHandler = 
+        result = EventHandler(view: v)
         result.isEnabled = proc(): bool =
             v.childs.len > 0
         
@@ -197,15 +197,15 @@ if isMainModule:
                 removeView("dialog")
 
 
-    proc serializeFormData(v: View): Action =
-        result = Action(view: v)
+    proc serializeFormData(v: View): EventHandler =
+        result = EventHandler(view: v)
         result.onAction = proc(v: Widget) =
             for child in v.childs:
                 echo child.id," ", child.name, " ", typeof(child.parent)
 
 
-    proc saveAction(v: View): Action = 
-        result = Action(view: v)
+    proc saveEventHandler(v: View): EventHandler = 
+        result = EventHandler(view: v)
         result.isEnabled = proc(): bool =
             v.childs.len > 0
         
@@ -215,21 +215,21 @@ if isMainModule:
                 savedlg.add(TextField(id:"id", x:0, y:0, name:"  Form-Id : ", len:20))
                 savedlg.add(TextField(id:"name", x:0, y:1, name:"     Name : ", len:20))
                 savedlg.add(TextField(id:"filename", x:0, y:2, name:" Filename : ", len:20))
-                savedlg.add(Button(id:"save", x:0, y:3, frame:1, name:"Save", action:serializeFormData(form)))
+                savedlg.add(Button(id:"save", x:0, y:3, frame:1, name:"Save", handler:serializeFormData(form)))
 
                 addView(savedlg)
                 setFocus(savedlg)
                 toFirstEditField(savedlg)
 
-    proc quitAction(v: View): Action = 
-        result = Action(view: v)
+    proc quitEventHandler(v: View): EventHandler = 
+        result = EventHandler(view: v)
         result.onAction = proc(v: Widget) =
             onExit()
 
-    param.add(Button(frame:1, id:"delete", name:"Delete", action:deleteAction(form)))
-    param.add(Button(frame:1, id:"show", name:"Show", action:showAction(form)))
-    param.add(Button(frame:1, id:"save", name:"Save", action:saveAction(form)))
-    param.add(Button(frame:1, id:"quit", name:"Quit", action:quitAction(form)))    
+    param.add(Button(frame:1, id:"delete", name:"Delete", handler:deleteEventHandler(form)))
+    param.add(Button(frame:1, id:"show", name:"Show", handler:showEventHandler(form)))
+    param.add(Button(frame:1, id:"save", name:"Save", handler:saveEventHandler(form)))
+    param.add(Button(frame:1, id:"quit", name:"Quit", handler:quitEventHandler(form)))    
 
     addView(form)
     addView(param)
